@@ -3,7 +3,7 @@ I am a bar docked on the right or left edge of the world, displaying utilities (
 
 I am made of a strip of vertical tabs, one per utility, and of a stack of panels displaying the active utilities. The button at the top of the strip collapses the panels so that I only take the width of the strip, without changing which utilities are active.
 A tab tells whether its utility is active: an active tab is highlighted, even when I am collapsed. Clicking the tab of an inactive utility activates it and expands me. Clicking the tab of a displayed utility deactivates it; clicking the tab of an active utility while I am collapsed expands me. I collapse when the last active utility is deactivated.
-The panels are stacked in the order of the tabs. Each panel has a header with the title of its utility and a button to deactivate it.
+The panels are stacked in the order of the tabs. Each panel has a header with the title of its utility and a button to deactivate it. The utilities are told when their panel becomes visible or hidden, so that they can stop costly work while hidden.
 Dragging the separators between panels (see UtilitiesBarPanelSeparatorMorph) shares the height between them. The heights are kept as proportions so that they follow my height.
 Dragging the handle on the inner edge of the panels (see UtilitiesBarResizeHandleMorph) resizes them, and the new width is saved in the settings.
 
@@ -31,6 +31,7 @@ Instance variables:
 - panels: the panel morph of each displayed utility
 - panelStack: the morph holding the displayed panels, nil when I am collapsed
 - settingsUtility: the utility displaying my settings, created the first time they are displayed
+- notifiedUtilities: the utilities I last told that they are displayed (see UtilitiesBarUtility >> #displayed and #hidden)
 "
 Class {
 	#name : 'UtilitiesBarMorph',
@@ -45,7 +46,8 @@ Class {
 		'proportions',
 		'panels',
 		'panelStack',
-		'activeUtilities'
+		'activeUtilities',
+		'notifiedUtilities'
 	],
 	#classVars : [
 		'ContentWidth',
@@ -263,6 +265,15 @@ UtilitiesBarMorph >> deactivate: aUtility [
 	self rebuild
 ]
 
+{ #category : 'submorphs - add/remove' }
+UtilitiesBarMorph >> delete [
+	"The displayed utilities are told that they are hidden so that they can stop their work."
+
+	notifiedUtilities do: [ :utility | utility hidden ].
+	notifiedUtilities := IdentitySet new.
+	super delete
+]
+
 { #category : 'change reporting' }
 UtilitiesBarMorph >> displayExtentChanged [
 
@@ -316,6 +327,7 @@ UtilitiesBarMorph >> initialize [
 	contents := IdentityDictionary new.
 	contentWidth := self class contentWidth.
 	activeUtilities := IdentitySet new.
+	notifiedUtilities := IdentitySet new.
 	proportions := IdentityDictionary new.
 	panels := IdentityDictionary new.
 	self
@@ -574,6 +586,23 @@ UtilitiesBarMorph >> noteNewOwner: aMorph [
 	self updateBounds
 ]
 
+{ #category : 'private - building' }
+UtilitiesBarMorph >> notifyVisibilityChanges [
+	"Tell the utilities whose panel became visible or stopped being visible since the last notification."
+
+	| displayed |
+	displayed := self isExpanded
+		             ifTrue: [ self activeUtilities asIdentitySet ]
+		             ifFalse: [ IdentitySet new ].
+	notifiedUtilities
+		reject: [ :utility | displayed includes: utility ]
+		thenDo: [ :utility | utility hidden ].
+	displayed
+		reject: [ :utility | notifiedUtilities includes: utility ]
+		thenDo: [ :utility | utility displayed ].
+	notifiedUtilities := displayed
+]
+
 { #category : 'change reporting' }
 UtilitiesBarMorph >> ownerChanged [
 
@@ -608,7 +637,8 @@ UtilitiesBarMorph >> rebuild [
 				add: self newPanelStack ].
 	self isAdheringToLeft ifTrue: [ parts := parts reversed ].
 	parts do: [ :part | self addMorphBack: part ].
-	self updateBounds
+	self updateBounds.
+	self notifyVisibilityChanges
 ]
 
 { #category : 'resizing' }

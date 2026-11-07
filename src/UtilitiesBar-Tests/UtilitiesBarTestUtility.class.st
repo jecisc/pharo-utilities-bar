@@ -9,7 +9,8 @@ Class {
 	#instVars : [
 		'title',
 		'priority',
-		'buildCount'
+		'buildCount',
+		'visibilityEvents'
 	],
 	#category : 'UtilitiesBar-Tests',
 	#package : 'UtilitiesBar-Tests'
@@ -43,13 +44,26 @@ UtilitiesBarTestUtility >> buildCount [
 	^ buildCount
 ]
 
+{ #category : 'events' }
+UtilitiesBarTestUtility >> displayed [
+
+	visibilityEvents add: #displayed
+]
+
+{ #category : 'events' }
+UtilitiesBarTestUtility >> hidden [
+
+	visibilityEvents add: #hidden
+]
+
 { #category : 'initialization' }
 UtilitiesBarTestUtility >> initialize [
 
 	super initialize.
 	buildCount := 0.
 	priority := 100.
-	title := 'Test'
+	title := 'Test'.
+	visibilityEvents := OrderedCollection new
 ]
 
 { #category : 'accessing' }
@@ -74,4 +88,10 @@ UtilitiesBarTestUtility >> title [
 UtilitiesBarTestUtility >> title: aString [
 
 	title := aString
+]
+
+{ #category : 'accessing' }
+UtilitiesBarTestUtility >> visibilityEvents [
+
+	^ visibilityEvents
 ]

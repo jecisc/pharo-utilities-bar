@@ -40,6 +40,22 @@ UtilitiesBarMorphTest >> testActivateDisplaysThePanel [
 	self assert: ((bar contentOf: secondUtility) hasOwner: bar)
 ]
 
+{ #category : 'tests - visibility' }
+UtilitiesBarMorphTest >> testActivateNotifiesThatTheUtilityIsDisplayed [
+
+	bar activate: firstUtility.
+	self assert: firstUtility visibilityEvents asArray equals: #( #displayed ).
+	self assertEmpty: secondUtility visibilityEvents
+]
+
+{ #category : 'tests - visibility' }
+UtilitiesBarMorphTest >> testActivatingAnotherUtilityDoesNotNotifyTheDisplayedOnesAgain [
+
+	bar activate: firstUtility.
+	bar activate: secondUtility.
+	self assert: firstUtility visibilityEvents asArray equals: #( #displayed )
+]
+
 { #category : 'tests - panels' }
 UtilitiesBarMorphTest >> testActiveUtilitiesAreInTheOrderOfTheTabs [
 
@@ -132,6 +148,15 @@ UtilitiesBarMorphTest >> testClearAreaOfOwnerExcludesTheBar [
 	self assert: world clearArea left equals: bar width
 ]
 
+{ #category : 'tests - visibility' }
+UtilitiesBarMorphTest >> testCollapseAndExpandNotifyTheVisibility [
+
+	bar activate: firstUtility.
+	bar collapse.
+	bar expand.
+	self assert: firstUtility visibilityEvents asArray equals: #( #displayed #hidden #displayed )
+]
+
 { #category : 'tests - panels' }
 UtilitiesBarMorphTest >> testCollapseKeepsActiveUtilities [
 
@@ -179,12 +204,29 @@ UtilitiesBarMorphTest >> testDeactivateHidesThePanel [
 	self assert: bar activeUtilities asArray equals: { secondUtility }
 ]
 
+{ #category : 'tests - visibility' }
+UtilitiesBarMorphTest >> testDeactivateNotifiesThatTheUtilityIsHidden [
+
+	bar activate: firstUtility.
+	bar deactivate: firstUtility.
+	self assert: firstUtility visibilityEvents asArray equals: #( #displayed #hidden )
+]
+
 { #category : 'tests - panels' }
 UtilitiesBarMorphTest >> testDeactivatingLastActiveUtilityCollapses [
 
 	bar activate: firstUtility.
 	bar deactivate: firstUtility.
 	self deny: bar isExpanded
+]
+
+{ #category : 'tests - visibility' }
+UtilitiesBarMorphTest >> testDeleteNotifiesThatTheDisplayedUtilitiesAreHidden [
+
+	world addMorph: bar.
+	bar activate: firstUtility.
+	bar delete.
+	self assert: firstUtility visibilityEvents asArray equals: #( #displayed #hidden )
 ]
 
 { #category : 'tests - panels' }
@@ -312,6 +354,15 @@ UtilitiesBarMorphTest >> testPanelProportionsAreKeptWhenTheBarHeightChanges [
 	bar updateBounds.
 	bar fullBounds.
 	self assert: ((bar panelOf: firstUtility) height / (bar panelOf: secondUtility) height - ratio) abs < 0.05
+]
+
+{ #category : 'tests - visibility' }
+UtilitiesBarMorphTest >> testRemovedUtilityIsNotifiedAsHidden [
+
+	bar activate: firstUtility.
+	bar activate: secondUtility.
+	bar utilities: { secondUtility }.
+	self assert: firstUtility visibilityEvents asArray equals: #( #displayed #hidden )
 ]
 
 { #category : 'tests - panels' }
