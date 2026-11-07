@@ -1,4 +1,7 @@
 # pharo-utilities-bar
+
+[![CI](https://github.com/jecisc/pharo-utilities-bar/actions/workflows/ci.yml/badge.svg)](https://github.com/jecisc/pharo-utilities-bar/actions/workflows/ci.yml)
+
 An utility to add some utilities in a collapsable panel in Pharo IDE
 
 The bar is docked on the right edge of the world (or the left one, see the settings). Each utility adds a vertical tab to the bar. Clicking a tab displays its utility; clicking it again, or clicking the arrow at the top of the bar, collapses the bar so that only the tabs remain visible. Maximized windows do not cover the bar.
