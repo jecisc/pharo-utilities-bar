@@ -3,13 +3,15 @@ I am a bar docked on the right or left edge of the world, displaying utilities (
 
 I am made of a strip of vertical tabs, one per utility, and of a content panel displaying the selected utility. The button at the top of the strip collapses the content panel so that I only take the width of the strip. Clicking a tab selects its utility and expands me; clicking the tab of the selected utility collapses me. Dragging the handle on the inner edge of the content panel (see UtilitiesBarResizeHandleMorph) resizes it, and the new width is saved in the settings.
 
+The settings icon at the bottom of the strip displays my settings in the content panel (see UtilitiesBarSettingsUtility). Clicking it again collapses me.
+
 The world considers me as a docking bar so that maximized windows do not cover me.
 
-The settings (Settings browser > Appearance > Morphic > Utilities bar) control whether I am displayed, on which edge and the width of my content panel.
+The settings (from my settings icon or from the Settings browser > Appearance > Morphic > Utilities bar) control whether I am displayed, on which edge and the width of my content panel.
 
 Public API (class side):
 - #open / #closeAll / #reset: open, close or recreate the bar of the current world
-- #showUtilitiesBar: / #edge: change the settings and recreate the bar
+- #showUtilitiesBar: / #edge: change the settings and recreate the bar if they changed
 - #contentWidth: changes the width of the content panel of the opened bars without recreating them
 
 Instance variables:
@@ -19,6 +21,7 @@ Instance variables:
 - edge: the edge of my owner I adhere to, #right or #left
 - contents: cache of the content morphs already built for each utility, so that their state is kept when switching tabs
 - contentWidth: the width of the content panel, resize handle included
+- settingsUtility: the utility displaying my settings, created the first time they are displayed
 "
 Class {
 	#name : 'UtilitiesBarMorph',
@@ -29,7 +32,8 @@ Class {
 		'expanded',
 		'edge',
 		'contents',
-		'contentWidth'
+		'contentWidth',
+		'settingsUtility'
 	],
 	#classVars : [
 		'ContentWidth',
@@ -78,7 +82,9 @@ UtilitiesBarMorph class >> edge [
 
 { #category : 'settings' }
 UtilitiesBarMorph class >> edge: aSymbol [
+	"The bar is recreated only when the edge changes, so that it is not collapsed for nothing."
 
+	self edge = aSymbol ifTrue: [ ^ self ].
 	Edge := aSymbol.
 	self reset
 ]
@@ -132,6 +138,7 @@ UtilitiesBarMorph class >> showUtilitiesBar [
 { #category : 'settings' }
 UtilitiesBarMorph class >> showUtilitiesBar: aBoolean [
 
+	self showUtilitiesBar = aBoolean ifTrue: [ ^ self ].
 	ShowUtilitiesBar := aBoolean.
 	self reset
 ]
@@ -252,6 +259,13 @@ UtilitiesBarMorph >> expand [
 	self selectUtility: (selectedUtility ifNil: [ utilities first ])
 ]
 
+{ #category : 'event handling' }
+UtilitiesBarMorph >> handlesMouseDown: anEvent [
+	"Handling the mouse down events, even to do nothing, prevents the hand from grabbing me when the mouse is pressed and moved over me."
+
+	^ true
+]
+
 { #category : 'initialization' }
 UtilitiesBarMorph >> initialize [
 
@@ -265,6 +279,7 @@ UtilitiesBarMorph >> initialize [
 		listDirection: #leftToRight;
 		hResizing: #rigid;
 		vResizing: #rigid;
+		color: Color transparent;
 		utilities: UtilitiesBarUtility availableUtilities
 ]
 
@@ -303,6 +318,12 @@ UtilitiesBarMorph >> isDockingBar [
 UtilitiesBarMorph >> isExpanded [
 
 	^ expanded
+]
+
+{ #category : 'testing' }
+UtilitiesBarMorph >> isShowingSettings [
+
+	^ self isExpanded and: [ selectedUtility == self settingsUtility ]
 ]
 
 { #category : 'testing' }
@@ -352,6 +373,15 @@ UtilitiesBarMorph >> newContentPanel [
 ]
 
 { #category : 'private - building' }
+UtilitiesBarMorph >> newSettingsButton [
+
+	^ (self iconNamed: #configuration) asMorph
+		  setBalloonText: 'Settings of the utilities bar';
+		  on: #mouseUp send: #toggleSettings to: self;
+		  yourself
+]
+
+{ #category : 'private - building' }
 UtilitiesBarMorph >> newTabFor: aUtility [
 
 	^ Morph new
@@ -388,6 +418,13 @@ UtilitiesBarMorph >> newTabStrip [
 		         yourself.
 	utilities do: [ :utility | strip addMorphBack: (self newTabFor: utility) ].
 	^ strip
+		  addMorphBack: (Morph new
+				   color: Color transparent;
+				   hResizing: #spaceFill;
+				   vResizing: #spaceFill;
+				   yourself);
+		  addMorphBack: self newSettingsButton;
+		  yourself
 ]
 
 { #category : 'private - building' }
@@ -463,6 +500,12 @@ UtilitiesBarMorph >> selectedUtility [
 	^ selectedUtility
 ]
 
+{ #category : 'accessing' }
+UtilitiesBarMorph >> settingsUtility [
+
+	^ settingsUtility ifNil: [ settingsUtility := UtilitiesBarSettingsUtility new ]
+]
+
 { #category : 'actions' }
 UtilitiesBarMorph >> tabClicked: aUtility [
 
@@ -519,6 +562,13 @@ UtilitiesBarMorph >> toggleIconName [
 		  ifFalse: [ #back ]
 ]
 
+{ #category : 'actions' }
+UtilitiesBarMorph >> toggleSettings [
+	"Display the settings of the bar in the content panel, or collapse the bar if they are already displayed."
+
+	self tabClicked: self settingsUtility
+]
+
 { #category : 'private - layout' }
 UtilitiesBarMorph >> updateBounds [
 
@@ -544,7 +594,7 @@ UtilitiesBarMorph >> utilities: aCollection [
 	"Display aCollection of utilities, sorted by priority then by title. If the selected utility is not part of them, the bar gets collapsed."
 
 	utilities := aCollection asArray sorted: #priority ascending , #title ascending.
-	(utilities includes: selectedUtility) ifFalse: [
+	(self isShowingSettings or: [ utilities includes: selectedUtility ]) ifFalse: [
 			selectedUtility := nil.
 			expanded := false ].
 	contents keysDo: [ :utility | (utilities includes: utility) ifFalse: [ contents removeKey: utility ] ].

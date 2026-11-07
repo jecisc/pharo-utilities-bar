@@ -80,6 +80,20 @@ UtilitiesBarMorphTest >> testBoundsStayOnEdgeWhenExpanded [
 ]
 
 { #category : 'tests' }
+UtilitiesBarMorphTest >> testCannotBeGrabbedByTheHand [
+
+	| event |
+	event := MouseButtonEvent new
+		         setType: #mouseDown
+		         position: 0 @ 0
+		         which: MouseButtonEvent redButton
+		         buttons: MouseButtonEvent redButton
+		         hand: nil
+		         stamp: 0.
+	self assert: (bar handlesMouseDown: event)
+]
+
+{ #category : 'tests' }
 UtilitiesBarMorphTest >> testChangingEdgeMovesTheBar [
 
 	world addMorph: bar.
@@ -236,12 +250,35 @@ UtilitiesBarMorphTest >> testSelectUtilityDisplaysItsContent [
 ]
 
 { #category : 'tests' }
+UtilitiesBarMorphTest >> testSelectingUtilityClosesTheSettings [
+
+	bar toggleSettings.
+	bar selectUtility: firstUtility.
+	self deny: bar isShowingSettings.
+	self assert: bar selectedUtility identicalTo: firstUtility
+]
+
+{ #category : 'tests' }
 UtilitiesBarMorphTest >> testSettingUtilitiesForgetsRemovedSelectedUtility [
 
 	bar selectUtility: secondUtility.
 	bar utilities: { firstUtility }.
 	self deny: bar isExpanded.
 	self assert: bar selectedUtility isNil
+]
+
+{ #category : 'tests' }
+UtilitiesBarMorphTest >> testSettingsAreHiddenByDefault [
+
+	self deny: bar isShowingSettings
+]
+
+{ #category : 'tests' }
+UtilitiesBarMorphTest >> testSettingsStayDisplayedWhenUtilitiesChange [
+
+	bar toggleSettings.
+	bar utilities: { firstUtility }.
+	self assert: bar isShowingSettings
 ]
 
 { #category : 'tests' }
@@ -269,6 +306,23 @@ UtilitiesBarMorphTest >> testToggleExpanded [
 	bar toggleExpanded.
 	self assert: bar isExpanded.
 	bar toggleExpanded.
+	self deny: bar isExpanded
+]
+
+{ #category : 'tests' }
+UtilitiesBarMorphTest >> testToggleSettingsDisplaysThem [
+
+	bar toggleSettings.
+	self assert: bar isExpanded.
+	self assert: bar isShowingSettings.
+	self assert: (bar displayedContent hasOwner: bar)
+]
+
+{ #category : 'tests' }
+UtilitiesBarMorphTest >> testToggleSettingsTwiceCollapses [
+
+	bar toggleSettings.
+	bar toggleSettings.
 	self deny: bar isExpanded
 ]
 
