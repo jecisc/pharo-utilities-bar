@@ -1,15 +1,16 @@
 "
 I am a bar docked on the right or left edge of the world, displaying utilities (see UtilitiesBarUtility).
 
-I am made of a strip of vertical tabs, one per utility, and of a content panel displaying the selected utility. The button at the top of the strip collapses the content panel so that I only take the width of the strip. Clicking a tab selects its utility and expands me; clicking the tab of the selected utility collapses me.
+I am made of a strip of vertical tabs, one per utility, and of a content panel displaying the selected utility. The button at the top of the strip collapses the content panel so that I only take the width of the strip. Clicking a tab selects its utility and expands me; clicking the tab of the selected utility collapses me. Dragging the handle on the inner edge of the content panel (see UtilitiesBarResizeHandleMorph) resizes it, and the new width is saved in the settings.
 
 The world considers me as a docking bar so that maximized windows do not cover me.
 
-The settings (Settings browser > Appearance > Morphic > Utilities bar) control whether I am displayed and on which edge.
+The settings (Settings browser > Appearance > Morphic > Utilities bar) control whether I am displayed, on which edge and the width of my content panel.
 
 Public API (class side):
 - #open / #closeAll / #reset: open, close or recreate the bar of the current world
 - #showUtilitiesBar: / #edge: change the settings and recreate the bar
+- #contentWidth: changes the width of the content panel of the opened bars without recreating them
 
 Instance variables:
 - utilities: the utilities I display, sorted by priority then title
@@ -17,7 +18,7 @@ Instance variables:
 - expanded: whether the content panel is displayed
 - edge: the edge of my owner I adhere to, #right or #left
 - contents: cache of the content morphs already built for each utility, so that their state is kept when switching tabs
-- contentWidth: the width of the content panel
+- contentWidth: the width of the content panel, resize handle included
 "
 Class {
 	#name : 'UtilitiesBarMorph',
@@ -31,6 +32,7 @@ Class {
 		'contentWidth'
 	],
 	#classVars : [
+		'ContentWidth',
 		'Edge',
 		'ShowUtilitiesBar'
 	],
@@ -43,15 +45,28 @@ UtilitiesBarMorph class >> closeAll [
 	"Close the utilities bars of the current world."
 
 	<script>
-	self currentWorld submorphs
-		select: [ :morph | morph isUtilitiesBar ]
-		thenDo: [ :bar | bar delete ]
+	self openedBars do: [ :bar | bar delete ]
 ]
 
 { #category : 'private' }
 UtilitiesBarMorph class >> codeChanged: aCodeAnnouncement [
 
 	(aCodeAnnouncement classAffected instanceSide inheritsFrom: UtilitiesBarUtility) ifTrue: [ UIManager default defer: [ self reset ] ]
+]
+
+{ #category : 'settings' }
+UtilitiesBarMorph class >> contentWidth [
+	"Answer the width in pixels of the panel displaying the selected utility."
+
+	^ ContentWidth ifNil: [ ContentWidth := 400 ]
+]
+
+{ #category : 'settings' }
+UtilitiesBarMorph class >> contentWidth: anInteger [
+	"Resize the content panel of the opened bars without recreating them so that their state is kept."
+
+	ContentWidth := anInteger.
+	self openedBars do: [ :bar | bar contentWidth: anInteger ]
 ]
 
 { #category : 'settings' }
@@ -90,6 +105,13 @@ UtilitiesBarMorph class >> open [
 	<script>
 	self showUtilitiesBar ifFalse: [ ^ self ].
 	self new openInWorld: self currentWorld
+]
+
+{ #category : 'opening' }
+UtilitiesBarMorph class >> openedBars [
+	"Answer the utilities bars of the current world."
+
+	^ self currentWorld submorphs select: [ :morph | morph isUtilitiesBar ]
 ]
 
 { #category : 'class initialization' }
@@ -135,7 +157,12 @@ UtilitiesBarMorph class >> utilitiesBarSettingsOn: aBuilder [
 					domainValues: {
 							('Right' -> #right).
 							('Left' -> #left) };
-					description: 'The edge of the world the utilities bar adheres to.' ]
+					description: 'The edge of the world the utilities bar adheres to.'.
+				(aBuilder setting: #contentWidth)
+					target: self;
+					label: 'Panel width';
+					defaultValue: 400;
+					description: 'The width in pixels of the panel displaying the selected utility. It can also be changed by dragging the inner edge of the panel.' ]
 ]
 
 { #category : 'private - layout' }
@@ -177,9 +204,10 @@ UtilitiesBarMorph >> contentWidth [
 
 { #category : 'accessing' }
 UtilitiesBarMorph >> contentWidth: anInteger [
+	"The content width includes the resize handle and is never smaller than the minimum."
 
-	contentWidth := anInteger.
-	self rebuild
+	contentWidth := anInteger max: self minimumContentWidth.
+	self updateBounds
 ]
 
 { #category : 'change reporting' }
@@ -231,7 +259,7 @@ UtilitiesBarMorph >> initialize [
 	expanded := false.
 	edge := self class edge.
 	contents := IdentityDictionary new.
-	contentWidth := 400.
+	contentWidth := self class contentWidth.
 	self
 		changeTableLayout;
 		listDirection: #leftToRight;
@@ -283,6 +311,26 @@ UtilitiesBarMorph >> isUtilitiesBar [
 	^ true
 ]
 
+{ #category : 'resizing' }
+UtilitiesBarMorph >> maximumContentWidth [
+	"Answer the largest content width keeping some of the world visible next to me."
+
+	^ self availableArea width - self tabStripWidth - self minimumFreeWidth max: self minimumContentWidth
+]
+
+{ #category : 'resizing' }
+UtilitiesBarMorph >> minimumContentWidth [
+
+	^ 150
+]
+
+{ #category : 'resizing' }
+UtilitiesBarMorph >> minimumFreeWidth [
+	"Answer the width of the world that must stay visible next to me when the content panel is resized."
+
+	^ 100
+]
+
 { #category : 'private - building' }
 UtilitiesBarMorph >> newContentPanel [
 
@@ -292,9 +340,8 @@ UtilitiesBarMorph >> newContentPanel [
 		  cellPositioning: #topCenter;
 		  cellInset: 4;
 		  layoutInset: 4;
-		  hResizing: #rigid;
+		  hResizing: #spaceFill;
 		  vResizing: #spaceFill;
-		  width: contentWidth;
 		  color: self theme backgroundColor;
 		  addMorphBack: ((StringMorph contents: selectedUtility title)
 				   color: self theme textColor;
@@ -374,10 +421,31 @@ UtilitiesBarMorph >> rebuild [
 	| panels |
 	self removeAllMorphs.
 	panels := OrderedCollection with: self newTabStrip.
-	self isExpanded ifTrue: [ panels add: self newContentPanel ].
+	self isExpanded ifTrue: [
+			panels
+				add: (UtilitiesBarResizeHandleMorph for: self);
+				add: self newContentPanel ].
 	self isAdheringToLeft ifTrue: [ panels := panels reversed ].
 	panels do: [ :panel | self addMorphBack: panel ].
 	self updateBounds
+]
+
+{ #category : 'resizing' }
+UtilitiesBarMorph >> resizeContentWithHandleAt: aNumber [
+	"The resize handle was dragged to the horizontal position aNumber. The content panel is resized so that its inner edge follows it."
+
+	| requestedWidth |
+	requestedWidth := self isAdheringToRight
+		                  ifTrue: [ self right - aNumber ]
+		                  ifFalse: [ aNumber - self left ].
+	self contentWidth: (requestedWidth min: self maximumContentWidth) rounded
+]
+
+{ #category : 'resizing' }
+UtilitiesBarMorph >> saveContentWidth [
+	"Store my content width in the settings so that it is kept by the next bars."
+
+	self class contentWidth: contentWidth
 ]
 
 { #category : 'actions' }

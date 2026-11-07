@@ -123,6 +123,19 @@ UtilitiesBarMorphTest >> testContentIsBuiltOnlyOnce [
 ]
 
 { #category : 'tests' }
+UtilitiesBarMorphTest >> testContentWidthDefaultsToTheSetting [
+
+	self assert: bar contentWidth equals: UtilitiesBarMorph contentWidth
+]
+
+{ #category : 'tests' }
+UtilitiesBarMorphTest >> testContentWidthIsAtLeastTheMinimum [
+
+	bar contentWidth: 10.
+	self assert: bar contentWidth equals: bar minimumContentWidth
+]
+
+{ #category : 'tests' }
 UtilitiesBarMorphTest >> testExpandSelectsFirstUtility [
 
 	bar expand.
@@ -158,6 +171,59 @@ UtilitiesBarMorphTest >> testIsCollapsedByDefault [
 	self assert: bar selectedUtility isNil.
 	self assert: bar displayedContent isNil.
 	self assert: bar width equals: bar tabStripWidth
+]
+
+{ #category : 'tests' }
+UtilitiesBarMorphTest >> testResizeContentFromHandleOnLeftEdge [
+
+	bar edge: #left.
+	world addMorph: bar.
+	bar expand.
+	bar resizeContentWithHandleAt: 300.
+	self assert: bar contentWidth equals: 300.
+	self assert: bar left equals: 0.
+	self assert: bar width equals: bar tabStripWidth + 300
+]
+
+{ #category : 'tests' }
+UtilitiesBarMorphTest >> testResizeContentFromHandleOnRightEdge [
+
+	world addMorph: bar.
+	bar expand.
+	bar resizeContentWithHandleAt: 700.
+	self assert: bar contentWidth equals: 300.
+	self assert: bar right equals: 1000.
+	self assert: bar width equals: bar tabStripWidth + 300
+]
+
+{ #category : 'tests' }
+UtilitiesBarMorphTest >> testResizeContentIsLimitedByTheAvailableWidth [
+
+	world addMorph: bar.
+	bar expand.
+	bar resizeContentWithHandleAt: 0.
+	self assert: bar contentWidth equals: bar maximumContentWidth.
+	self assert: bar left >= (world left + bar minimumFreeWidth)
+]
+
+{ #category : 'tests' }
+UtilitiesBarMorphTest >> testResizeContentIsLimitedByTheMinimumWidth [
+
+	world addMorph: bar.
+	bar expand.
+	bar resizeContentWithHandleAt: 990.
+	self assert: bar contentWidth equals: bar minimumContentWidth
+]
+
+{ #category : 'tests' }
+UtilitiesBarMorphTest >> testSaveContentWidthStoresItInTheSettings [
+
+	| previousWidth |
+	previousWidth := UtilitiesBarMorph contentWidth.
+	[
+		bar contentWidth: previousWidth + 50.
+		bar saveContentWidth.
+		self assert: UtilitiesBarMorph contentWidth equals: previousWidth + 50 ] ensure: [ UtilitiesBarMorph contentWidth: previousWidth ]
 ]
 
 { #category : 'tests' }
