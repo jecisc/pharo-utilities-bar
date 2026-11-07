@@ -31,6 +31,25 @@ UtilitiesBarMorphTest >> setUp [
 		       yourself
 ]
 
+{ #category : 'tests - panels' }
+UtilitiesBarMorphTest >> testActivateDisplaysThePanel [
+
+	bar activate: secondUtility.
+	self assert: bar isExpanded.
+	self assert: (bar isDisplayed: secondUtility).
+	self assert: ((bar contentOf: secondUtility) hasOwner: bar)
+]
+
+{ #category : 'tests - panels' }
+UtilitiesBarMorphTest >> testActiveUtilitiesAreInTheOrderOfTheTabs [
+
+	bar activate: secondUtility.
+	bar activate: firstUtility.
+	self assert: bar activeUtilities asArray equals: {
+			firstUtility.
+			secondUtility }
+]
+
 { #category : 'tests' }
 UtilitiesBarMorphTest >> testBoundsAvoidTopAndBottomDockingBars [
 
@@ -113,23 +132,24 @@ UtilitiesBarMorphTest >> testClearAreaOfOwnerExcludesTheBar [
 	self assert: world clearArea left equals: bar width
 ]
 
-{ #category : 'tests' }
-UtilitiesBarMorphTest >> testCollapse [
+{ #category : 'tests - panels' }
+UtilitiesBarMorphTest >> testCollapseKeepsActiveUtilities [
 
-	bar expand.
+	bar activate: secondUtility.
 	bar collapse.
 	self deny: bar isExpanded.
-	self assert: bar displayedContent isNil.
-	self assert: bar selectedUtility identicalTo: firstUtility
+	self deny: (bar isDisplayed: secondUtility).
+	self assert: (bar isActive: secondUtility)
 ]
 
-{ #category : 'tests' }
+{ #category : 'tests - panels' }
 UtilitiesBarMorphTest >> testContentIsBuiltOnlyOnce [
 
 	bar
-		selectUtility: firstUtility;
-		selectUtility: secondUtility;
-		selectUtility: firstUtility;
+		activate: firstUtility;
+		activate: secondUtility;
+		deactivate: firstUtility;
+		activate: firstUtility;
 		collapse;
 		expand.
 	self assert: firstUtility buildCount equals: 1.
@@ -149,22 +169,48 @@ UtilitiesBarMorphTest >> testContentWidthIsAtLeastTheMinimum [
 	self assert: bar contentWidth equals: bar minimumContentWidth
 ]
 
-{ #category : 'tests' }
-UtilitiesBarMorphTest >> testExpandSelectsFirstUtility [
+{ #category : 'tests - panels' }
+UtilitiesBarMorphTest >> testDeactivateHidesThePanel [
+
+	bar activate: firstUtility.
+	bar activate: secondUtility.
+	bar deactivate: firstUtility.
+	self assert: bar isExpanded.
+	self assert: bar activeUtilities asArray equals: { secondUtility }
+]
+
+{ #category : 'tests - panels' }
+UtilitiesBarMorphTest >> testDeactivatingLastActiveUtilityCollapses [
+
+	bar activate: firstUtility.
+	bar deactivate: firstUtility.
+	self deny: bar isExpanded
+]
+
+{ #category : 'tests - panels' }
+UtilitiesBarMorphTest >> testExpandActivatesFirstUtilityWhenNoneIsActive [
 
 	bar expand.
 	self assert: bar isExpanded.
-	self assert: bar selectedUtility identicalTo: firstUtility.
-	self assert: bar displayedContent isNotNil
+	self assert: bar activeUtilities asArray equals: { firstUtility }
 ]
 
-{ #category : 'tests' }
+{ #category : 'tests - panels' }
+UtilitiesBarMorphTest >> testExpandKeepsActiveUtilities [
+
+	bar activate: secondUtility.
+	bar collapse.
+	bar expand.
+	self assert: bar activeUtilities asArray equals: { secondUtility }
+]
+
+{ #category : 'tests - panels' }
 UtilitiesBarMorphTest >> testExpandWithoutUtilitiesStaysCollapsed [
 
 	bar utilities: #(  ).
 	bar expand.
 	self deny: bar isExpanded.
-	self assert: bar selectedUtility isNil
+	self assertEmpty: bar activeUtilities
 ]
 
 { #category : 'tests' }
@@ -178,13 +224,103 @@ UtilitiesBarMorphTest >> testIsAdheringToItsEdge [
 	self assert: bar isDockingBar
 ]
 
-{ #category : 'tests' }
+{ #category : 'tests - panels' }
 UtilitiesBarMorphTest >> testIsCollapsedByDefault [
 
 	self deny: bar isExpanded.
-	self assert: bar selectedUtility isNil.
-	self assert: bar displayedContent isNil.
+	self assertEmpty: bar activeUtilities.
 	self assert: bar width equals: bar tabStripWidth
+]
+
+{ #category : 'tests - panels' }
+UtilitiesBarMorphTest >> testLayoutIgnoresMissingUtilities [
+
+	| newBar |
+	bar activate: firstUtility.
+	newBar := UtilitiesBarMorph new
+		          edge: #right;
+		          utilities: #(  );
+		          restoreLayout: bar layoutSnapshot;
+		          yourself.
+	self deny: newBar isExpanded.
+	self assertEmpty: newBar activeUtilities
+]
+
+{ #category : 'tests - panels' }
+UtilitiesBarMorphTest >> testLayoutIsRestoredInANewBar [
+
+	| newBar newFirstUtility newSecondUtility |
+	world addMorph: bar.
+	bar activate: firstUtility.
+	bar activate: secondUtility.
+	bar fullBounds.
+	bar resizePanelsAbove: firstUtility below: secondUtility withSeparatorAt: (bar panelOf: firstUtility) bottom + 100.
+	newFirstUtility := UtilitiesBarTestUtility title: 'First' priority: 10.
+	newSecondUtility := UtilitiesBarTestUtility title: 'Second' priority: 20.
+	newBar := UtilitiesBarMorph new
+		          edge: #right;
+		          utilities: {
+				          newFirstUtility.
+				          newSecondUtility };
+		          restoreLayout: bar layoutSnapshot;
+		          yourself.
+	self assert: newBar isExpanded.
+	self assert: newBar activeUtilities asArray equals: {
+			newFirstUtility.
+			newSecondUtility }.
+	self assert: (newBar proportionOf: newFirstUtility) equals: (bar proportionOf: firstUtility)
+]
+
+{ #category : 'tests - panels' }
+UtilitiesBarMorphTest >> testLayoutKeepsActiveUtilitiesOfACollapsedBar [
+
+	| newBar newSecondUtility |
+	bar activate: secondUtility.
+	bar collapse.
+	newSecondUtility := UtilitiesBarTestUtility title: 'Second' priority: 20.
+	newBar := UtilitiesBarMorph new
+		          edge: #right;
+		          utilities: { newSecondUtility };
+		          restoreLayout: bar layoutSnapshot;
+		          yourself.
+	self deny: newBar isExpanded.
+	self assert: (newBar isActive: newSecondUtility)
+]
+
+{ #category : 'tests - panels' }
+UtilitiesBarMorphTest >> testPanelHeightsAreSharedEquallyByDefault [
+
+	world addMorph: bar.
+	bar activate: firstUtility.
+	bar activate: secondUtility.
+	bar fullBounds.
+	self assert: ((bar panelOf: firstUtility) height - (bar panelOf: secondUtility) height) abs <= 1
+]
+
+{ #category : 'tests - panels' }
+UtilitiesBarMorphTest >> testPanelProportionsAreKeptWhenTheBarHeightChanges [
+
+	| ratio |
+	world addMorph: bar.
+	bar activate: firstUtility.
+	bar activate: secondUtility.
+	bar fullBounds.
+	bar resizePanelsAbove: firstUtility below: secondUtility withSeparatorAt: (bar panelOf: firstUtility) bottom + 100.
+	bar fullBounds.
+	ratio := (bar panelOf: firstUtility) height / (bar panelOf: secondUtility) height.
+	world extent: 1000 @ 500.
+	bar updateBounds.
+	bar fullBounds.
+	self assert: ((bar panelOf: firstUtility) height / (bar panelOf: secondUtility) height - ratio) abs < 0.05
+]
+
+{ #category : 'tests - panels' }
+UtilitiesBarMorphTest >> testRemovingAllActiveUtilitiesCollapses [
+
+	bar activate: secondUtility.
+	bar utilities: { firstUtility }.
+	self deny: bar isExpanded.
+	self assertEmpty: bar activeUtilities
 ]
 
 { #category : 'tests' }
@@ -240,40 +376,52 @@ UtilitiesBarMorphTest >> testSaveContentWidthStoresItInTheSettings [
 		self assert: UtilitiesBarMorph contentWidth equals: previousWidth + 50 ] ensure: [ UtilitiesBarMorph contentWidth: previousWidth ]
 ]
 
-{ #category : 'tests' }
-UtilitiesBarMorphTest >> testSelectUtilityDisplaysItsContent [
+{ #category : 'tests - panels' }
+UtilitiesBarMorphTest >> testSeparatorDragKeepsAMinimumHeight [
 
-	bar selectUtility: secondUtility.
-	self assert: bar isExpanded.
-	self assert: bar selectedUtility identicalTo: secondUtility.
-	self assert: (bar displayedContent hasOwner: bar)
+	world addMorph: bar.
+	bar activate: firstUtility.
+	bar activate: secondUtility.
+	bar fullBounds.
+	bar resizePanelsAbove: firstUtility below: secondUtility withSeparatorAt: bar top.
+	bar fullBounds.
+	self assert: ((bar panelOf: firstUtility) height - bar minimumPanelHeight) abs <= 1
 ]
 
-{ #category : 'tests' }
-UtilitiesBarMorphTest >> testSelectingUtilityClosesTheSettings [
+{ #category : 'tests - panels' }
+UtilitiesBarMorphTest >> testSeparatorDragMovesHeightBetweenNeighbours [
+
+	| firstHeight secondHeight |
+	world addMorph: bar.
+	bar activate: firstUtility.
+	bar activate: secondUtility.
+	bar fullBounds.
+	firstHeight := (bar panelOf: firstUtility) height.
+	secondHeight := (bar panelOf: secondUtility) height.
+	bar resizePanelsAbove: firstUtility below: secondUtility withSeparatorAt: (bar panelOf: firstUtility) bottom + 100.
+	bar fullBounds.
+	self assert: ((bar panelOf: firstUtility) height - (firstHeight + 100)) abs <= 1.
+	self assert: ((bar panelOf: secondUtility) height - (secondHeight - 100)) abs <= 1
+]
+
+{ #category : 'tests - panels' }
+UtilitiesBarMorphTest >> testSettingsAreDisplayedBelowTheUtilities [
 
 	bar toggleSettings.
-	bar selectUtility: firstUtility.
-	self deny: bar isShowingSettings.
-	self assert: bar selectedUtility identicalTo: firstUtility
+	bar activate: secondUtility.
+	self assert: bar isShowingSettings.
+	self assert: bar activeUtilities asArray equals: {
+			secondUtility.
+			bar settingsUtility }
 ]
 
-{ #category : 'tests' }
-UtilitiesBarMorphTest >> testSettingUtilitiesForgetsRemovedSelectedUtility [
-
-	bar selectUtility: secondUtility.
-	bar utilities: { firstUtility }.
-	self deny: bar isExpanded.
-	self assert: bar selectedUtility isNil
-]
-
-{ #category : 'tests' }
+{ #category : 'tests - panels' }
 UtilitiesBarMorphTest >> testSettingsAreHiddenByDefault [
 
 	self deny: bar isShowingSettings
 ]
 
-{ #category : 'tests' }
+{ #category : 'tests - panels' }
 UtilitiesBarMorphTest >> testSettingsStayDisplayedWhenUtilitiesChange [
 
 	bar toggleSettings.
@@ -281,23 +429,33 @@ UtilitiesBarMorphTest >> testSettingsStayDisplayedWhenUtilitiesChange [
 	self assert: bar isShowingSettings
 ]
 
-{ #category : 'tests' }
-UtilitiesBarMorphTest >> testTabClickedOnOtherUtilitySelectsIt [
+{ #category : 'tests - panels' }
+UtilitiesBarMorphTest >> testTabClickedOnActiveUtilityDeactivatesIt [
 
-	bar selectUtility: firstUtility.
-	bar tabClicked: secondUtility.
-	self assert: bar isExpanded.
-	self assert: bar selectedUtility identicalTo: secondUtility
+	bar activate: firstUtility.
+	bar activate: secondUtility.
+	bar tabClicked: firstUtility.
+	self assert: bar activeUtilities asArray equals: { secondUtility }
 ]
 
-{ #category : 'tests' }
-UtilitiesBarMorphTest >> testTabClickedOnSelectedUtilityCollapses [
+{ #category : 'tests - panels' }
+UtilitiesBarMorphTest >> testTabClickedOnActiveUtilityOfACollapsedBarExpandsIt [
 
-	bar selectUtility: firstUtility.
+	bar activate: firstUtility.
+	bar collapse.
 	bar tabClicked: firstUtility.
-	self deny: bar isExpanded.
-	bar tabClicked: firstUtility.
-	self assert: bar isExpanded
+	self assert: bar isExpanded.
+	self assert: (bar isActive: firstUtility)
+]
+
+{ #category : 'tests - panels' }
+UtilitiesBarMorphTest >> testTabClickedOnInactiveUtilityActivatesIt [
+
+	bar activate: firstUtility.
+	bar tabClicked: secondUtility.
+	self assert: bar activeUtilities asArray equals: {
+			firstUtility.
+			secondUtility }
 ]
 
 { #category : 'tests' }
@@ -309,21 +467,23 @@ UtilitiesBarMorphTest >> testToggleExpanded [
 	self deny: bar isExpanded
 ]
 
-{ #category : 'tests' }
+{ #category : 'tests - panels' }
 UtilitiesBarMorphTest >> testToggleSettingsDisplaysThem [
 
 	bar toggleSettings.
 	self assert: bar isExpanded.
 	self assert: bar isShowingSettings.
-	self assert: (bar displayedContent hasOwner: bar)
+	self assert: ((bar contentOf: bar settingsUtility) hasOwner: bar)
 ]
 
-{ #category : 'tests' }
-UtilitiesBarMorphTest >> testToggleSettingsTwiceCollapses [
+{ #category : 'tests - panels' }
+UtilitiesBarMorphTest >> testToggleSettingsTwiceHidesThem [
 
+	bar activate: firstUtility.
 	bar toggleSettings.
 	bar toggleSettings.
-	self deny: bar isExpanded
+	self deny: bar isShowingSettings.
+	self assert: bar isExpanded
 ]
 
 { #category : 'tests' }

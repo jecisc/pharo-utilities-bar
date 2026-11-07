@@ -1,26 +1,35 @@
 "
 I am a bar docked on the right or left edge of the world, displaying utilities (see UtilitiesBarUtility).
 
-I am made of a strip of vertical tabs, one per utility, and of a content panel displaying the selected utility. The button at the top of the strip collapses the content panel so that I only take the width of the strip. Clicking a tab selects its utility and expands me; clicking the tab of the selected utility collapses me. Dragging the handle on the inner edge of the content panel (see UtilitiesBarResizeHandleMorph) resizes it, and the new width is saved in the settings.
+I am made of a strip of vertical tabs, one per utility, and of a stack of panels displaying the active utilities. The button at the top of the strip collapses the panels so that I only take the width of the strip, without changing which utilities are active.
+A tab tells whether its utility is active: an active tab is highlighted, even when I am collapsed. Clicking the tab of an inactive utility activates it and expands me. Clicking the tab of a displayed utility deactivates it; clicking the tab of an active utility while I am collapsed expands me. I collapse when the last active utility is deactivated.
+The panels are stacked in the order of the tabs. Each panel has a header with the title of its utility and a button to deactivate it.
+Dragging the separators between panels (see UtilitiesBarPanelSeparatorMorph) shares the height between them. The heights are kept as proportions so that they follow my height.
+Dragging the handle on the inner edge of the panels (see UtilitiesBarResizeHandleMorph) resizes them, and the new width is saved in the settings.
 
-The settings icon at the bottom of the strip displays my settings in the content panel (see UtilitiesBarSettingsUtility). Clicking it again collapses me.
+The settings icon at the bottom of the strip toggles a panel with my settings below the other panels (see UtilitiesBarSettingsUtility).
 
 The world considers me as a docking bar so that maximized windows do not cover me.
 
-The settings (from my settings icon or from the Settings browser > Appearance > Morphic > Utilities bar) control whether I am displayed, on which edge and the width of my content panel.
+The settings (from my settings icon or from the Settings browser > Appearance > Morphic > Utilities bar) control whether I am displayed, on which edge and the width of my panels.
+
+When I am recreated (reset, code change of a utility, change of settings), my layout is restored in the new bar (see UtilitiesBarLayout).
 
 Public API (class side):
-- #open / #closeAll / #reset: open, close or recreate the bar of the current world
+- #open / #closeAll / #reset: open, close or recreate the bar of the current world, keeping its layout
 - #showUtilitiesBar: / #edge: change the settings and recreate the bar if they changed
-- #contentWidth: changes the width of the content panel of the opened bars without recreating them
+- #contentWidth: changes the width of the panels of the opened bars without recreating them
 
 Instance variables:
 - utilities: the utilities I display, sorted by priority then title
-- selectedUtility: the utility whose content is displayed when I am expanded
-- expanded: whether the content panel is displayed
+- activeUtilities: the utilities whose panels are displayed when I am expanded
+- expanded: whether the panels are displayed
 - edge: the edge of my owner I adhere to, #right or #left
-- contents: cache of the content morphs already built for each utility, so that their state is kept when switching tabs
-- contentWidth: the width of the content panel, resize handle included
+- contents: cache of the content morphs already built for each utility, so that their state is kept when they are hidden
+- contentWidth: the width of the panels, resize handle included
+- proportions: the share of my height given to the panel of each utility, 1 by default
+- panels: the panel morph of each displayed utility
+- panelStack: the morph holding the displayed panels, nil when I am collapsed
 - settingsUtility: the utility displaying my settings, created the first time they are displayed
 "
 Class {
@@ -28,16 +37,20 @@ Class {
 	#superclass : 'Morph',
 	#instVars : [
 		'utilities',
-		'selectedUtility',
 		'expanded',
 		'edge',
 		'contents',
 		'contentWidth',
-		'settingsUtility'
+		'settingsUtility',
+		'proportions',
+		'panels',
+		'panelStack',
+		'activeUtilities'
 	],
 	#classVars : [
 		'ContentWidth',
 		'Edge',
+		'Layout',
 		'ShowUtilitiesBar'
 	],
 	#category : 'UtilitiesBar',
@@ -46,10 +59,12 @@ Class {
 
 { #category : 'opening' }
 UtilitiesBarMorph class >> closeAll [
-	"Close the utilities bars of the current world."
+	"Close the utilities bars of the current world, keeping the layout of the last one to restore it in the next bar."
 
 	<script>
-	self openedBars do: [ :bar | bar delete ]
+	self openedBars do: [ :bar |
+			Layout := bar layoutSnapshot.
+			bar delete ]
 ]
 
 { #category : 'private' }
@@ -106,11 +121,14 @@ UtilitiesBarMorph class >> install [
 
 { #category : 'opening' }
 UtilitiesBarMorph class >> open [
-	"Open the utilities bar in the current world if the settings ask for it."
+	"Open the utilities bar in the current world if the settings ask for it, with the layout of the last closed bar."
 
 	<script>
+	| bar |
 	self showUtilitiesBar ifFalse: [ ^ self ].
-	self new openInWorld: self currentWorld
+	bar := self new.
+	Layout ifNotNil: [ :savedLayout | bar restoreLayout: savedLayout ].
+	bar openInWorld: self currentWorld
 ]
 
 { #category : 'opening' }
@@ -172,6 +190,25 @@ UtilitiesBarMorph class >> utilitiesBarSettingsOn: aBuilder [
 					description: 'The width in pixels of the panel displaying the selected utility. It can also be changed by dragging the inner edge of the panel.' ]
 ]
 
+{ #category : 'actions' }
+UtilitiesBarMorph >> activate: aUtility [
+	"Display the panel of aUtility with the panels of the other active utilities."
+
+	activeUtilities add: aUtility.
+	expanded := true.
+	self rebuild
+]
+
+{ #category : 'accessing' }
+UtilitiesBarMorph >> activeUtilities [
+	"Answer the active utilities in the order of the tabs, the settings last. Their panels are displayed when I am expanded."
+
+	| active |
+	active := utilities select: [ :utility | self isActive: utility ].
+	(self isActive: self settingsUtility) ifFalse: [ ^ active ].
+	^ active copyWith: self settingsUtility
+]
+
 { #category : 'private - layout' }
 UtilitiesBarMorph >> availableArea [
 	"Answer the area of my owner that is not covered by the docking bars adhering to its top or bottom."
@@ -217,18 +254,19 @@ UtilitiesBarMorph >> contentWidth: anInteger [
 	self updateBounds
 ]
 
+{ #category : 'actions' }
+UtilitiesBarMorph >> deactivate: aUtility [
+	"Hide the panel of aUtility. I collapse if it was the last active utility."
+
+	activeUtilities remove: aUtility ifAbsent: [ ].
+	activeUtilities ifEmpty: [ expanded := false ].
+	self rebuild
+]
+
 { #category : 'change reporting' }
 UtilitiesBarMorph >> displayExtentChanged [
 
 	self updateBounds
-]
-
-{ #category : 'accessing' }
-UtilitiesBarMorph >> displayedContent [
-	"Answer the morph of the selected utility if it is displayed, nil otherwise."
-
-	self isExpanded ifFalse: [ ^ nil ].
-	^ self contentOf: selectedUtility
 ]
 
 { #category : 'accessing' }
@@ -253,10 +291,13 @@ UtilitiesBarMorph >> edgeToAdhereTo [
 
 { #category : 'actions' }
 UtilitiesBarMorph >> expand [
-	"Display the content of the selected utility, or of the first one if none is selected."
+	"Display the panels of the active utilities, activating the first utility if none is active."
 
-	(selectedUtility isNil and: [ utilities isEmpty ]) ifTrue: [ ^ self ].
-	self selectUtility: (selectedUtility ifNil: [ utilities first ])
+	activeUtilities ifEmpty: [
+			utilities ifEmpty: [ ^ self ].
+			activeUtilities add: utilities first ].
+	expanded := true.
+	self rebuild
 ]
 
 { #category : 'event handling' }
@@ -274,6 +315,9 @@ UtilitiesBarMorph >> initialize [
 	edge := self class edge.
 	contents := IdentityDictionary new.
 	contentWidth := self class contentWidth.
+	activeUtilities := IdentitySet new.
+	proportions := IdentityDictionary new.
+	panels := IdentityDictionary new.
 	self
 		changeTableLayout;
 		listDirection: #leftToRight;
@@ -281,6 +325,12 @@ UtilitiesBarMorph >> initialize [
 		vResizing: #rigid;
 		color: Color transparent;
 		utilities: UtilitiesBarUtility availableUtilities
+]
+
+{ #category : 'testing' }
+UtilitiesBarMorph >> isActive: aUtility [
+
+	^ activeUtilities includes: aUtility
 ]
 
 { #category : 'testing' }
@@ -308,6 +358,12 @@ UtilitiesBarMorph >> isAdheringToTop [
 ]
 
 { #category : 'testing' }
+UtilitiesBarMorph >> isDisplayed: aUtility [
+
+	^ self isExpanded and: [ self isActive: aUtility ]
+]
+
+{ #category : 'testing' }
 UtilitiesBarMorph >> isDockingBar [
 	"Being a docking bar makes the world exclude me from its clear area."
 
@@ -323,13 +379,24 @@ UtilitiesBarMorph >> isExpanded [
 { #category : 'testing' }
 UtilitiesBarMorph >> isShowingSettings [
 
-	^ self isExpanded and: [ selectedUtility == self settingsUtility ]
+	^ self isDisplayed: self settingsUtility
 ]
 
 { #category : 'testing' }
 UtilitiesBarMorph >> isUtilitiesBar [
 
 	^ true
+]
+
+{ #category : 'layout' }
+UtilitiesBarMorph >> layoutSnapshot [
+	"Answer a snapshot of my layout, to restore it in another bar (see #restoreLayout:)."
+
+	^ UtilitiesBarLayout new
+		  activeTitles: (self activeUtilities collect: [ :utility | utility title ] as: Array);
+		  expanded: expanded;
+		  proportions: (proportions associations collect: [ :association | association key title -> association value ] as: Dictionary);
+		  yourself
 ]
 
 { #category : 'resizing' }
@@ -352,24 +419,79 @@ UtilitiesBarMorph >> minimumFreeWidth [
 	^ 100
 ]
 
+{ #category : 'resizing' }
+UtilitiesBarMorph >> minimumPanelHeight [
+
+	^ 60
+]
+
 { #category : 'private - building' }
-UtilitiesBarMorph >> newContentPanel [
+UtilitiesBarMorph >> newCloseButtonFor: aUtility [
+
+	^ (self iconNamed: #windowClose) asMorph
+		  setBalloonText: 'Hide the panel';
+		  on: #mouseUp send: #value to: [ self deactivate: aUtility ];
+		  yourself
+]
+
+{ #category : 'private - building' }
+UtilitiesBarMorph >> newHeaderFor: aUtility [
+	"Answer a row with the title of aUtility and a button to hide its panel."
+
+	^ Morph new
+		  changeTableLayout;
+		  listDirection: #leftToRight;
+		  cellPositioning: #center;
+		  cellInset: 4;
+		  hResizing: #spaceFill;
+		  vResizing: #shrinkWrap;
+		  color: Color transparent;
+		  addMorphBack: ((StringMorph contents: aUtility title)
+				   color: self theme textColor;
+				   emphasis: TextEmphasis bold emphasisCode;
+				   yourself);
+		  addMorphBack: (Morph new
+				   color: Color transparent;
+				   hResizing: #spaceFill;
+				   extent: 0 @ 0;
+				   yourself);
+		  addMorphBack: (self newCloseButtonFor: aUtility);
+		  yourself
+]
+
+{ #category : 'private - building' }
+UtilitiesBarMorph >> newPanelFor: aUtility [
 
 	^ Morph new
 		  changeTableLayout;
 		  listDirection: #topToBottom;
-		  cellPositioning: #topCenter;
 		  cellInset: 4;
 		  layoutInset: 4;
 		  hResizing: #spaceFill;
-		  vResizing: #spaceFill;
-		  color: self theme backgroundColor;
-		  addMorphBack: ((StringMorph contents: selectedUtility title)
-				   color: self theme textColor;
-				   emphasis: TextEmphasis bold emphasisCode;
-				   yourself);
-		  addMorphBack: (self contentOf: selectedUtility);
+		  vResizing: #rigid;
+		  color: Color transparent;
+		  addMorphBack: (self newHeaderFor: aUtility);
+		  addMorphBack: (self contentOf: aUtility);
 		  yourself
+]
+
+{ #category : 'private - building' }
+UtilitiesBarMorph >> newPanelStack [
+	"Answer a column of the panels of the active utilities, separated by handles to resize them."
+
+	| active |
+	active := self activeUtilities.
+	panelStack := Morph new
+		              changeTableLayout;
+		              listDirection: #topToBottom;
+		              hResizing: #spaceFill;
+		              vResizing: #spaceFill;
+		              color: self theme backgroundColor;
+		              yourself.
+	active doWithIndex: [ :utility :index |
+			index > 1 ifTrue: [ panelStack addMorphBack: (UtilitiesBarPanelSeparatorMorph bar: self above: (active at: index - 1) below: utility) ].
+			panelStack addMorphBack: (panels at: utility put: (self newPanelFor: utility)) ].
+	^ panelStack
 ]
 
 { #category : 'private - building' }
@@ -383,19 +505,26 @@ UtilitiesBarMorph >> newSettingsButton [
 
 { #category : 'private - building' }
 UtilitiesBarMorph >> newTabFor: aUtility [
+	"The tab of an active utility is highlighted, even when I am collapsed. The tab of an inactive one has a faded label."
 
+	| isActive |
+	isActive := self isActive: aUtility.
 	^ Morph new
 		  changeTableLayout;
 		  hResizing: #shrinkWrap;
 		  vResizing: #shrinkWrap;
 		  layoutInset: self tabInset;
 		  cornerStyle: #rounded;
-		  color: ((self isExpanded and: [ selectedUtility == aUtility ])
+		  color: (isActive
 				   ifTrue: [ self theme selectionColor ]
-				   ifFalse: [ self theme baseColor ]);
+				   ifFalse: [ Color transparent ]);
 		  borderStyle: (BorderStyle width: 1 color: self theme borderColor);
-		  addMorph: (self verticalLabel: aUtility title) asMorph;
-		  setBalloonText: aUtility title;
+		  addMorph: (self verticalLabel: aUtility title color: (isActive
+						    ifTrue: [ self theme textColor ]
+						    ifFalse: [ self theme textColor alpha: 0.5 ])) asMorph;
+		  setBalloonText: (isActive
+				   ifTrue: [ aUtility title , ': click to hide' ]
+				   ifFalse: [ aUtility title , ': click to show' ]);
 		  on: #mouseUp send: #value to: [ self tabClicked: aUtility ];
 		  yourself
 ]
@@ -452,18 +581,33 @@ UtilitiesBarMorph >> ownerChanged [
 	super ownerChanged
 ]
 
+{ #category : 'accessing' }
+UtilitiesBarMorph >> panelOf: aUtility [
+
+	^ panels at: aUtility
+]
+
+{ #category : 'accessing' }
+UtilitiesBarMorph >> proportionOf: aUtility [
+	"Answer the share of the height of the bar given to the panel of aUtility, relatively to the other displayed panels."
+
+	^ proportions at: aUtility ifAbsent: [ 1 ]
+]
+
 { #category : 'private - building' }
 UtilitiesBarMorph >> rebuild [
 
-	| panels |
+	| parts |
 	self removeAllMorphs.
-	panels := OrderedCollection with: self newTabStrip.
+	panels := IdentityDictionary new.
+	panelStack := nil.
+	parts := OrderedCollection with: self newTabStrip.
 	self isExpanded ifTrue: [
-			panels
+			parts
 				add: (UtilitiesBarResizeHandleMorph for: self);
-				add: self newContentPanel ].
-	self isAdheringToLeft ifTrue: [ panels := panels reversed ].
-	panels do: [ :panel | self addMorphBack: panel ].
+				add: self newPanelStack ].
+	self isAdheringToLeft ifTrue: [ parts := parts reversed ].
+	parts do: [ :part | self addMorphBack: part ].
 	self updateBounds
 ]
 
@@ -479,25 +623,39 @@ UtilitiesBarMorph >> resizeContentWithHandleAt: aNumber [
 ]
 
 { #category : 'resizing' }
+UtilitiesBarMorph >> resizePanelsAbove: anUpperUtility below: aLowerUtility withSeparatorAt: aNumber [
+	"The separator between the panels of the two utilities was dragged to the vertical position aNumber. Height is moved from one panel to the other, keeping the total proportion of both."
+
+	| upperPanel combinedHeight upperHeight combinedProportion |
+	upperPanel := panels at: anUpperUtility.
+	combinedHeight := upperPanel height + (panels at: aLowerUtility) height.
+	upperHeight := (aNumber - upperPanel top max: self minimumPanelHeight) min: combinedHeight - self minimumPanelHeight.
+	combinedProportion := (self proportionOf: anUpperUtility) + (self proportionOf: aLowerUtility).
+	proportions at: anUpperUtility put: combinedProportion * upperHeight / combinedHeight.
+	proportions at: aLowerUtility put: combinedProportion - (proportions at: anUpperUtility).
+	self updatePanelHeights
+]
+
+{ #category : 'layout' }
+UtilitiesBarMorph >> restoreLayout: aLayout [
+	"Restore the layout of another bar. The utilities are matched by title; the ones I do not have are ignored."
+
+	| utilitiesByTitle |
+	utilitiesByTitle := utilities collect: [ :utility | utility title -> utility ] as: Dictionary.
+	activeUtilities := (aLayout activeTitles
+		                    select: [ :title | utilitiesByTitle includesKey: title ]
+		                    thenCollect: [ :title | utilitiesByTitle at: title ]) asIdentitySet.
+	proportions := IdentityDictionary new.
+	aLayout proportions keysAndValuesDo: [ :title :proportion | utilitiesByTitle at: title ifPresent: [ :utility | proportions at: utility put: proportion ] ].
+	expanded := aLayout isExpanded and: [ activeUtilities isNotEmpty ].
+	self rebuild
+]
+
+{ #category : 'resizing' }
 UtilitiesBarMorph >> saveContentWidth [
 	"Store my content width in the settings so that it is kept by the next bars."
 
 	self class contentWidth: contentWidth
-]
-
-{ #category : 'actions' }
-UtilitiesBarMorph >> selectUtility: aUtility [
-	"Display the content of aUtility."
-
-	selectedUtility := aUtility.
-	expanded := true.
-	self rebuild
-]
-
-{ #category : 'accessing' }
-UtilitiesBarMorph >> selectedUtility [
-
-	^ selectedUtility
 ]
 
 { #category : 'accessing' }
@@ -508,9 +666,10 @@ UtilitiesBarMorph >> settingsUtility [
 
 { #category : 'actions' }
 UtilitiesBarMorph >> tabClicked: aUtility [
+	"Clicking the tab of a displayed utility deactivates it. Clicking another tab activates its utility, expanding me if needed."
 
-	(self isExpanded and: [ selectedUtility == aUtility ]) ifTrue: [ ^ self collapse ].
-	self selectUtility: aUtility
+	(self isDisplayed: aUtility) ifTrue: [ ^ self deactivate: aUtility ].
+	self activate: aUtility
 ]
 
 { #category : 'private - building' }
@@ -564,7 +723,7 @@ UtilitiesBarMorph >> toggleIconName [
 
 { #category : 'actions' }
 UtilitiesBarMorph >> toggleSettings [
-	"Display the settings of the bar in the content panel, or collapse the bar if they are already displayed."
+	"Display the settings of the bar below the active utilities, or hide them if they are displayed."
 
 	self tabClicked: self settingsUtility
 ]
@@ -580,7 +739,28 @@ UtilitiesBarMorph >> updateBounds [
 	area := self availableArea.
 	self bounds: (self isAdheringToRight
 			 ifTrue: [ area right - width @ area top corner: area bottomRight ]
-			 ifFalse: [ area topLeft corner: area left + width @ area bottom ])
+			 ifFalse: [ area topLeft corner: area left + width @ area bottom ]).
+	self updatePanelHeights
+]
+
+{ #category : 'private - layout' }
+UtilitiesBarMorph >> updatePanelHeights [
+	"Share the height of the panel stack between the displayed panels according to their proportions. The last panel takes what remains so that rounding errors do not leave a gap."
+
+	| active separatorsHeight availableHeight totalProportion |
+	panelStack ifNil: [ ^ self ].
+	active := self activeUtilities.
+	separatorsHeight := panelStack submorphs inject: 0 into: [ :sum :morph |
+			                    (panels includes: morph)
+				                    ifTrue: [ sum ]
+				                    ifFalse: [ sum + morph height ] ].
+	availableHeight := self height - separatorsHeight.
+	totalProportion := active inject: 0 into: [ :sum :utility | sum + (self proportionOf: utility) ].
+	active allButLast do: [ :utility |
+			(panels at: utility)
+				vResizing: #rigid;
+				height: (availableHeight * (self proportionOf: utility) / totalProportion) rounded ].
+	(panels at: active last) vResizing: #spaceFill
 ]
 
 { #category : 'accessing' }
@@ -591,18 +771,18 @@ UtilitiesBarMorph >> utilities [
 
 { #category : 'accessing' }
 UtilitiesBarMorph >> utilities: aCollection [
-	"Display aCollection of utilities, sorted by priority then by title. If the selected utility is not part of them, the bar gets collapsed."
+	"Display aCollection of utilities, sorted by priority then by title. The utilities that are not part of them are deactivated and their proportions forgotten."
 
 	utilities := aCollection asArray sorted: #priority ascending , #title ascending.
-	(self isShowingSettings or: [ utilities includes: selectedUtility ]) ifFalse: [
-			selectedUtility := nil.
-			expanded := false ].
-	contents keysDo: [ :utility | (utilities includes: utility) ifFalse: [ contents removeKey: utility ] ].
+	activeUtilities := activeUtilities select: [ :utility | (utilities includes: utility) or: [ utility == settingsUtility ] ].
+	activeUtilities ifEmpty: [ expanded := false ].
+	contents keys do: [ :utility | (utilities includes: utility) ifFalse: [ contents removeKey: utility ] ].
+	proportions keys do: [ :utility | (utilities includes: utility) ifFalse: [ proportions removeKey: utility ] ].
 	self rebuild
 ]
 
 { #category : 'private - building' }
-UtilitiesBarMorph >> verticalLabel: aString [
+UtilitiesBarMorph >> verticalLabel: aString color: aColor [
 	"Answer a form displaying aString from bottom to top."
 
 	| font form |
@@ -612,7 +792,7 @@ UtilitiesBarMorph >> verticalLabel: aString [
 		drawString: aString
 		at: 0 @ 0
 		font: font
-		color: self theme textColor.
+		color: aColor.
 	^ form rotateBy: #left centerAt: 0 @ 0
 ]
 

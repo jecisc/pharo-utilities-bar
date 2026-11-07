@@ -1,6 +1,6 @@
 "
 I am the utility displaying the settings of the utilities bar (see UtilitiesBarSettingsPresenter).
-I have no tab: the bar displays me when its settings icon is clicked.
+I have no tab: the bar toggles my panel with its settings icon.
 "
 Class {
 	#name : 'UtilitiesBarSettingsUtility',
