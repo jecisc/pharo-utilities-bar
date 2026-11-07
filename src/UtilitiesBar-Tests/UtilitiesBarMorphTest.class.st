@@ -330,6 +330,23 @@ UtilitiesBarMorphTest >> testLayoutKeepsActiveUtilitiesOfACollapsedBar [
 ]
 
 { #category : 'tests - panels' }
+UtilitiesBarMorphTest >> testPanelCanBeSmallerThanTheMinimumHeightOfItsContent [
+
+	| panel |
+	firstUtility minimumContentHeight: 300.
+	world addMorph: bar.
+	bar activate: firstUtility.
+	bar activate: secondUtility.
+	bar fullBounds.
+	bar resizePanelsAbove: firstUtility below: secondUtility withSeparatorAt: bar top.
+	bar fullBounds.
+	panel := bar panelOf: firstUtility.
+	self assert: (panel height - bar minimumPanelHeight) abs <= 1.
+	self assert: panel top equals: bar top.
+	self assert: (bar contentOf: firstUtility) bottom <= panel bottom
+]
+
+{ #category : 'tests - panels' }
 UtilitiesBarMorphTest >> testPanelHeightsAreSharedEquallyByDefault [
 
 	world addMorph: bar.

@@ -10,7 +10,8 @@ Class {
 		'title',
 		'priority',
 		'buildCount',
-		'visibilityEvents'
+		'visibilityEvents',
+		'minimumContentHeight'
 	],
 	#category : 'UtilitiesBar-Tests',
 	#package : 'UtilitiesBar-Tests'
@@ -36,6 +37,8 @@ UtilitiesBarTestUtility >> buildContent [
 
 	buildCount := buildCount + 1.
 	^ Morph new
+		  minHeight: (minimumContentHeight ifNil: [ 2 ]);
+		  yourself
 ]
 
 { #category : 'accessing' }
@@ -64,6 +67,13 @@ UtilitiesBarTestUtility >> initialize [
 	priority := 100.
 	title := 'Test'.
 	visibilityEvents := OrderedCollection new
+]
+
+{ #category : 'accessing' }
+UtilitiesBarTestUtility >> minimumContentHeight: anInteger [
+	"Make my content report a minimum height, as Spec presenters do."
+
+	minimumContentHeight := anInteger
 ]
 
 { #category : 'accessing' }

@@ -447,6 +447,20 @@ UtilitiesBarMorph >> newCloseButtonFor: aUtility [
 ]
 
 { #category : 'private - building' }
+UtilitiesBarMorph >> newContentContainerFor: aUtility [
+	"The content of a utility is displayed in a container without minimum size so that its panel can be smaller than the minimum of the content (see UtilitiesBarFillLayout). What does not fit is clipped."
+
+	^ Morph new
+		  layoutPolicy: UtilitiesBarFillLayout new;
+		  clipSubmorphs: true;
+		  hResizing: #spaceFill;
+		  vResizing: #spaceFill;
+		  color: Color transparent;
+		  addMorph: (self contentOf: aUtility);
+		  yourself
+]
+
+{ #category : 'private - building' }
 UtilitiesBarMorph >> newHeaderFor: aUtility [
 	"Answer a row with the title of aUtility and a button to hide its panel."
 
@@ -483,7 +497,7 @@ UtilitiesBarMorph >> newPanelFor: aUtility [
 		  vResizing: #rigid;
 		  color: Color transparent;
 		  addMorphBack: (self newHeaderFor: aUtility);
-		  addMorphBack: (self contentOf: aUtility);
+		  addMorphBack: (self newContentContainerFor: aUtility);
 		  yourself
 ]
 
