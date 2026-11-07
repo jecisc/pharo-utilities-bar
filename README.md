@@ -29,11 +29,15 @@ Each utility adds a vertical tab to the bar. A tab tells whether its utility is 
 
 ![Clicking the tabs to show and hide utilities, then collapsing and expanding the bar](resources/toggle-tabs.gif)
 
-Drag the inner edge of the panels to change their width, and the separators between panels to share the height between them. The heights are kept as proportions, so a small panel stays small when the screen or the taskbar changes size.
+Drag the inner edge of the panels to change their width, and the separators between panels to share the height between them. The heights are kept as proportions, so a small panel stays small when the screen or the taskbar changes size. Until you resize them, the panels of utilities declaring a default height get it, and the others share the remaining height.
 
 ![Dragging the inner edge of the panels, then the separator between two panels](resources/resize.gif)
 
-Maximized windows do not cover the bar. The active utilities and the heights of their panels are kept when the bar is recreated, for example when the code of a utility changes.
+Drag a tab to reorder the utilities: a line shows where the tab lands, and the panels follow the new order of the tabs.
+
+![Dragging the Transcript tab above the MCP tab](resources/reorder-tabs.gif)
+
+Maximized windows do not cover the bar. The active utilities, the heights of their panels and the order of the tabs are kept when the bar is recreated, for example when the code of a utility changes.
 
 ## Settings
 
@@ -72,7 +76,8 @@ What a utility can override:
 | `#title` | the class name | The label of the tab and of the panel. It also identifies the utility when the bar restores its layout, so keep it unique. |
 | `#newPresenter` | subclass responsibility | The Spec presenter displayed in the panel. |
 | `#buildContent` | `self newPresenter build` | Override it instead of `#newPresenter` to display a Morph. |
-| `#priority` | `100` | The order of the tabs, lowest first. Utilities with the same priority are sorted by title. |
+| `#priority` | `100` | The order of the tabs, lowest first. Utilities with the same priority are sorted by title. Once the user reorders the tabs by dragging them, their order prevails and the utilities the user never placed go at the end. |
+| `#defaultHeight` | `nil` | The height in pixels of the panel until the user resizes the panels. Useful for small utilities. Without it, the panel shares the height of the bar with the other ones. |
 | `#displayed` and `#hidden` | nothing | Sent by the bar when the panel of the utility becomes visible and when it stops being visible (hidden, bar collapsed or deleted). Use them to only do costly work, such as following a source of updates, while the panel is visible. |
 | `UtilitiesBarUtility class >> #isAvailable` | `true` for concrete classes | Answer `false` to hide the utility, for example when a dependency it needs is missing. |
 
@@ -88,11 +93,16 @@ spec
 
 ## Example: the utilities of my pharo-scripts
 
-My [pharo-scripts](https://github.com/jecisc/pharo-scripts), the settings loaded in all my Pharo images, define three utilities. They were added in [this commit](https://github.com/jecisc/pharo-scripts/commit/4e68cea8c21825416071b8fc61b92954e9c89c37).
+My [pharo-scripts](https://github.com/jecisc/pharo-scripts), the settings loaded in all my Pharo images, define five utilities. The first three were added in [this commit](https://github.com/jecisc/pharo-scripts/commit/4e68cea8c21825416071b8fc61b92954e9c89c37) and the two others in [this one](https://github.com/jecisc/pharo-scripts/commit/e7ebefd98f844be3683fcf097e34ec2da766a069).
 
-![The MCP, Notes and Transcript utilities of my pharo-scripts](resources/pharo-scripts-utilities.png)
+![The MCP, Repositories and Processes utilities of my pharo-scripts](resources/pharo-scripts-utilities.png)
 
-**MCP** ([utility](https://github.com/jecisc/pharo-scripts/blob/4e68cea8c21825416071b8fc61b92954e9c89c37/settings/PharoSettings-Utilities/PharoMCPServersUtility.class.st), [presenter](https://github.com/jecisc/pharo-scripts/blob/4e68cea8c21825416071b8fc61b92954e9c89c37/settings/PharoSettings-Utilities/PharoMCPServersPresenter.class.st)) lists the servers of [MCP](https://github.com/Evref-BL/MCP) running in the image, with their port and a dot telling their state: green when running and listening, orange when the server and its socket disagree, gray when stopped. A port input and a button start a new server. When MCP is not loaded, the panel only displays a button to load it: the presenter looks the `MCP` class up in the environment instead of referencing it, so the utility can be loaded without MCP.
+**MCP** ([utility](https://github.com/jecisc/pharo-scripts/blob/master/settings/PharoSettings-Utilities/PharoMCPServersUtility.class.st), [presenter](https://github.com/jecisc/pharo-scripts/blob/master/settings/PharoSettings-Utilities/PharoMCPServersPresenter.class.st)) lists the servers of [MCP](https://github.com/Evref-BL/MCP) running in the image, with their port and a dot telling their state: green when running and listening, orange when the server and its socket disagree, gray when stopped. A port input and a button start a new server. When MCP is not loaded, the panel only displays a button to load it: the presenter looks the `MCP` class up in the environment instead of referencing it, so the utility can be loaded without MCP. An image usually has a single server, so the utility declares a small default height and its list can shrink to one row:
+
+```smalltalk
+PharoMCPServersUtility >> defaultHeight
+	^ 92
+```
 
 **Notes** ([utility](https://github.com/jecisc/pharo-scripts/blob/4e68cea8c21825416071b8fc61b92954e9c89c37/settings/PharoSettings-Utilities/PharoNotesUtility.class.st), [presenter](https://github.com/jecisc/pharo-scripts/blob/4e68cea8c21825416071b8fc61b92954e9c89c37/settings/PharoSettings-Utilities/PharoNotesPresenter.class.st)) is a text area saved at each change in the cache folder of the playground, which my settings share between all my images.
 
@@ -108,6 +118,10 @@ PharoTranscriptUtility >> displayed
 PharoTranscriptUtility >> hidden
 	presenter ifNotNil: [ :transcriptPresenter | transcriptPresenter stopFollowing ]
 ```
+
+**Repositories** ([utility](https://github.com/jecisc/pharo-scripts/blob/e7ebefd98f844be3683fcf097e34ec2da766a069/settings/PharoSettings-Utilities/PharoRepositoriesUtility.class.st), [presenter](https://github.com/jecisc/pharo-scripts/blob/e7ebefd98f844be3683fcf097e34ec2da766a069/settings/PharoSettings-Utilities/PharoRepositoriesPresenter.class.st)) lists the Iceberg repositories of the image, the modified ones first, with their branch, their number of modified packages and a dot: orange when modified, green when clean, red when the clone is missing. Double clicking a repository opens its working copy. While its panel is visible, it listens to the announcements of Iceberg to stay up to date.
+
+**Processes** ([utility](https://github.com/jecisc/pharo-scripts/blob/e7ebefd98f844be3683fcf097e34ec2da766a069/settings/PharoSettings-Utilities/PharoProcessesUtility.class.st), [presenter](https://github.com/jecisc/pharo-scripts/blob/e7ebefd98f844be3683fcf097e34ec2da766a069/settings/PharoSettings-Utilities/PharoProcessesPresenter.class.st)) displays the memory of the image, its garbage collections and its processes, with a dot: green when running or ready, gray when waiting, orange when suspended (often a process stopped in a debugger). Buttons collect the garbage and terminate the selected process. It refreshes itself every two seconds, only while its panel is visible.
 
 The [baseline of my settings](https://github.com/jecisc/pharo-scripts/blob/4e68cea8c21825416071b8fc61b92954e9c89c37/settings/BaselineOfPharoSettings/BaselineOfPharoSettings.class.st) loads the utilities bar before the utilities. It uses my local clone of the utilities bar when there is one, so that my images load it without network, and GitHub otherwise:
 
