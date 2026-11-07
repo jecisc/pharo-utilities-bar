@@ -3,7 +3,7 @@ I am a bar docked on the right or left edge of the world, displaying utilities (
 
 I am made of a strip of vertical tabs, one per utility, and of a stack of panels displaying the active utilities. The button at the top of the strip collapses the panels so that I only take the width of the strip, without changing which utilities are active.
 A tab tells whether its utility is active: an active tab is highlighted, even when I am collapsed. Clicking the tab of an inactive utility activates it and expands me. Clicking the tab of a displayed utility deactivates it; clicking the tab of an active utility while I am collapsed expands me. I collapse when the last active utility is deactivated.
-The panels are stacked in the order of the tabs. Each panel has a header with the title of its utility and a button to deactivate it. The utilities are told when their panel becomes visible or hidden, so that they can stop costly work while hidden.
+Dragging a tab (see UtilitiesBarTabMorph) moves it: a line shows where it lands. The order of the tabs is then kept instead of the order of the priorities of the utilities, and the utilities that were never placed go at the end. The panels are stacked in the order of the tabs. Each panel has a header with the title of its utility and a button to deactivate it. The utilities are told when their panel becomes visible or hidden, so that they can stop costly work while hidden.
 A utility can declare a default height (see UtilitiesBarUtility >> #defaultHeight): its panel gets it until the user resizes the panels, and the other panels share the remaining height. Dragging the separators between panels (see UtilitiesBarPanelSeparatorMorph) turns the current heights into proportions and moves height between the two panels. The heights are kept as proportions so that they follow my height.
 Dragging the handle on the inner edge of the panels (see UtilitiesBarResizeHandleMorph) resizes them, and the new width is saved in the settings.
 
@@ -21,7 +21,7 @@ Public API (class side):
 - #contentWidth: changes the width of the panels of the opened bars without recreating them
 
 Instance variables:
-- utilities: the utilities I display, sorted by priority then title
+- utilities: the utilities I display, in the order of the tabs (see #ordered:)
 - activeUtilities: the utilities whose panels are displayed when I am expanded
 - expanded: whether the panels are displayed
 - edge: the edge of my owner I adhere to, #right or #left
@@ -32,6 +32,9 @@ Instance variables:
 - panelStack: the morph holding the displayed panels, nil when I am collapsed
 - settingsUtility: the utility displaying my settings, created the first time they are displayed
 - notifiedUtilities: the utilities I last told that they are displayed (see UtilitiesBarUtility >> #displayed and #hidden)
+- tabOrder: the titles of the utilities in the order the user gave to the tabs, nil until a tab is moved
+- tabs: the tab of each utility
+- dropIndicator: the line showing where a dragged tab lands, nil when no tab is dragged
 "
 Class {
 	#name : 'UtilitiesBarMorph',
@@ -47,7 +50,10 @@ Class {
 		'panels',
 		'panelStack',
 		'activeUtilities',
-		'notifiedUtilities'
+		'notifiedUtilities',
+		'tabOrder',
+		'tabs',
+		'dropIndicator'
 	],
 	#classVars : [
 		'ContentWidth',
@@ -325,6 +331,13 @@ UtilitiesBarMorph >> hasFixedHeight: aUtility [
 	^ aUtility defaultHeight isNotNil and: [ (proportions includesKey: aUtility) not ]
 ]
 
+{ #category : 'reordering' }
+UtilitiesBarMorph >> hideTabDropIndicator [
+
+	dropIndicator ifNotNil: [ :indicator | indicator delete ].
+	dropIndicator := nil
+]
+
 { #category : 'initialization' }
 UtilitiesBarMorph >> initialize [
 
@@ -337,6 +350,7 @@ UtilitiesBarMorph >> initialize [
 	notifiedUtilities := IdentitySet new.
 	proportions := IdentityDictionary new.
 	panels := IdentityDictionary new.
+	tabs := IdentityDictionary new.
 	self
 		changeTableLayout;
 		listDirection: #leftToRight;
@@ -415,6 +429,7 @@ UtilitiesBarMorph >> layoutSnapshot [
 		  activeTitles: (self activeUtilities collect: [ :utility | utility title ] as: Array);
 		  expanded: expanded;
 		  proportions: (proportions associations collect: [ :association | association key title -> association value ] as: Dictionary);
+		  tabOrder: tabOrder;
 		  yourself
 ]
 
@@ -442,6 +457,17 @@ UtilitiesBarMorph >> minimumFreeWidth [
 UtilitiesBarMorph >> minimumPanelHeight [
 
 	^ 60
+]
+
+{ #category : 'reordering' }
+UtilitiesBarMorph >> moveUtility: aUtility toIndex: anInteger [
+	"Move the tab of aUtility so that it becomes the tab at anInteger. The new order of the tabs replaces the one of the priorities."
+
+	utilities := ((utilities copyWithout: aUtility) asOrderedCollection
+		              add: aUtility beforeIndex: anInteger;
+		              yourself) asArray.
+	tabOrder := utilities collect: [ :utility | utility title ].
+	self rebuild
 ]
 
 { #category : 'private - building' }
@@ -542,7 +568,7 @@ UtilitiesBarMorph >> newTabFor: aUtility [
 
 	| isActive |
 	isActive := self isActive: aUtility.
-	^ Morph new
+	^ (UtilitiesBarTabMorph for: aUtility in: self)
 		  changeTableLayout;
 		  hResizing: #shrinkWrap;
 		  vResizing: #shrinkWrap;
@@ -556,9 +582,8 @@ UtilitiesBarMorph >> newTabFor: aUtility [
 						    ifTrue: [ self theme textColor ]
 						    ifFalse: [ self theme textColor alpha: 0.5 ])) asMorph;
 		  setBalloonText: (isActive
-				   ifTrue: [ aUtility title , ': click to hide' ]
-				   ifFalse: [ aUtility title , ': click to show' ]);
-		  on: #mouseUp send: #value to: [ self tabClicked: aUtility ];
+				   ifTrue: [ aUtility title , ': click to hide, drag to move' ]
+				   ifFalse: [ aUtility title , ': click to show, drag to move' ]);
 		  yourself
 ]
 
@@ -566,6 +591,7 @@ UtilitiesBarMorph >> newTabFor: aUtility [
 UtilitiesBarMorph >> newTabStrip [
 
 	| strip |
+	tabs := IdentityDictionary new.
 	strip := Morph new
 		         changeTableLayout;
 		         listDirection: #topToBottom;
@@ -578,7 +604,7 @@ UtilitiesBarMorph >> newTabStrip [
 		         color: self theme lightBackgroundColor;
 		         addMorphBack: self newToggleButton;
 		         yourself.
-	utilities do: [ :utility | strip addMorphBack: (self newTabFor: utility) ].
+	utilities do: [ :utility | strip addMorphBack: (tabs at: utility put: (self newTabFor: utility)) ].
 	^ strip
 		  addMorphBack: (Morph new
 				   color: Color transparent;
@@ -624,6 +650,17 @@ UtilitiesBarMorph >> notifyVisibilityChanges [
 	notifiedUtilities := displayed
 ]
 
+{ #category : 'reordering' }
+UtilitiesBarMorph >> ordered: aCollection [
+	"The utilities are sorted by priority then by title. Once the tabs were reordered by the user, the order of their titles prevails, and the utilities that were not placed by the user go at the end."
+
+	| sorted placed |
+	sorted := aCollection asArray sorted: #priority ascending , #title ascending.
+	tabOrder ifNil: [ ^ sorted ].
+	placed := (sorted select: [ :utility | tabOrder includes: utility title ]) sorted: [ :left :right | (tabOrder indexOf: left title) <= (tabOrder indexOf: right title) ].
+	^ placed , (sorted reject: [ :utility | tabOrder includes: utility title ])
+]
+
 { #category : 'change reporting' }
 UtilitiesBarMorph >> ownerChanged [
 
@@ -654,6 +691,7 @@ UtilitiesBarMorph >> rebuild [
 
 	| parts |
 	self removeAllMorphs.
+	dropIndicator := nil.
 	panels := IdentityDictionary new.
 	panelStack := nil.
 	parts := OrderedCollection with: self newTabStrip.
@@ -698,6 +736,8 @@ UtilitiesBarMorph >> restoreLayout: aLayout [
 	"Restore the layout of another bar. The utilities are matched by title; the ones I do not have are ignored."
 
 	| utilitiesByTitle |
+	tabOrder := aLayout tabOrder.
+	utilities := self ordered: utilities.
 	utilitiesByTitle := utilities collect: [ :utility | utility title -> utility ] as: Dictionary.
 	activeUtilities := (aLayout activeTitles
 		                    select: [ :title | utilitiesByTitle includesKey: title ]
@@ -721,12 +761,40 @@ UtilitiesBarMorph >> settingsUtility [
 	^ settingsUtility ifNil: [ settingsUtility := UtilitiesBarSettingsUtility new ]
 ]
 
+{ #category : 'reordering' }
+UtilitiesBarMorph >> showTabDropIndicatorFor: aUtility at: aPoint [
+	"Show a line where the tab of aUtility is dropped if the mouse is released at aPoint. It uses the color of the text to contrast with the strip whatever the theme."
+
+	| others index lineY strip |
+	others := utilities copyWithout: aUtility.
+	others ifEmpty: [ ^ self ].
+	index := self tabIndexFor: aUtility droppedAt: aPoint.
+	lineY := index > others size
+		         ifTrue: [ (tabs at: others last) bottom + 2 ]
+		         ifFalse: [ (tabs at: (others at: index)) top - 2 ].
+	strip := (tabs at: aUtility) owner.
+	dropIndicator ifNil: [
+			dropIndicator := Morph new
+				                 color: self theme textColor;
+				                 disableTableLayout: true;
+				                 yourself.
+			self addMorphFront: dropIndicator ].
+	dropIndicator bounds: (strip left + 2 @ (lineY - 1) extent: strip width - 4 @ 3)
+]
+
 { #category : 'actions' }
 UtilitiesBarMorph >> tabClicked: aUtility [
 	"Clicking the tab of a displayed utility deactivates it. Clicking another tab activates its utility, expanding me if needed."
 
 	(self isDisplayed: aUtility) ifTrue: [ ^ self deactivate: aUtility ].
 	self activate: aUtility
+]
+
+{ #category : 'reordering' }
+UtilitiesBarMorph >> tabIndexFor: aUtility droppedAt: aPoint [
+	"Answer the index the tab of aUtility gets if it is dropped at aPoint: after the other tabs above aPoint."
+
+	^ ((utilities copyWithout: aUtility) count: [ :utility | (tabs at: utility) center y < aPoint y ]) + 1
 ]
 
 { #category : 'private - building' }
@@ -739,6 +807,12 @@ UtilitiesBarMorph >> tabInset [
 UtilitiesBarMorph >> tabLabelFont [
 
 	^ StandardFonts defaultFont
+]
+
+{ #category : 'accessing' }
+UtilitiesBarMorph >> tabOf: aUtility [
+
+	^ tabs at: aUtility
 ]
 
 { #category : 'private - building' }
@@ -842,9 +916,9 @@ UtilitiesBarMorph >> utilities [
 
 { #category : 'accessing' }
 UtilitiesBarMorph >> utilities: aCollection [
-	"Display aCollection of utilities, sorted by priority then by title. The utilities that are not part of them are deactivated and their proportions forgotten."
+	"Display aCollection of utilities, in the order of the tabs (see #ordered:). The utilities that are not part of them are deactivated and their proportions forgotten."
 
-	utilities := aCollection asArray sorted: #priority ascending , #title ascending.
+	utilities := self ordered: aCollection.
 	activeUtilities := activeUtilities select: [ :utility | (utilities includes: utility) or: [ utility == settingsUtility ] ].
 	activeUtilities ifEmpty: [ expanded := false ].
 	contents keys do: [ :utility | (utilities includes: utility) ifFalse: [ contents removeKey: utility ] ].

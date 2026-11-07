@@ -14,6 +14,33 @@ Class {
 	#package : 'UtilitiesBar-Tests'
 }
 
+{ #category : 'helpers' }
+UtilitiesBarMorphTest >> mouseEvent: aType at: aPoint [
+
+	^ MouseButtonEvent new
+		  setType: aType
+		  position: aPoint
+		  which: MouseButtonEvent redButton
+		  buttons: (aType = #mouseUp
+				   ifTrue: [ 0 ]
+				   ifFalse: [ MouseButtonEvent redButton ])
+		  hand: nil
+		  stamp: 0
+]
+
+{ #category : 'helpers' }
+UtilitiesBarMorphTest >> mouseMoveTo: aPoint [
+
+	^ MouseMoveEvent basicNew
+		  setType: #mouseMove
+		  startPoint: aPoint
+		  endPoint: aPoint
+		  trail: { aPoint }
+		  buttons: MouseButtonEvent redButton
+		  hand: nil
+		  stamp: 0
+]
+
 { #category : 'running' }
 UtilitiesBarMorphTest >> setUp [
 
@@ -148,6 +175,22 @@ UtilitiesBarMorphTest >> testClearAreaOfOwnerExcludesTheBar [
 	self assert: world clearArea left equals: bar width
 ]
 
+{ #category : 'tests - reordering' }
+UtilitiesBarMorphTest >> testClickingATabTogglesItsUtility [
+
+	| tab |
+	world addMorph: bar.
+	bar fullBounds.
+	tab := bar tabOf: secondUtility.
+	tab mouseDown: (self mouseEvent: #mouseDown at: tab center).
+	tab mouseMove: (self mouseMoveTo: tab center + (0 @ 2)).
+	tab mouseUp: (self mouseEvent: #mouseUp at: tab center + (0 @ 2)).
+	self assert: (bar isActive: secondUtility).
+	self assert: bar utilities asArray equals: {
+			firstUtility.
+			secondUtility }
+]
+
 { #category : 'tests - visibility' }
 UtilitiesBarMorphTest >> testCollapseAndExpandNotifyTheVisibility [
 
@@ -266,6 +309,39 @@ UtilitiesBarMorphTest >> testDeleteNotifiesThatTheDisplayedUtilitiesAreHidden [
 	self assert: firstUtility visibilityEvents asArray equals: #( #displayed #hidden )
 ]
 
+{ #category : 'tests - reordering' }
+UtilitiesBarMorphTest >> testDraggingATabMovesItsUtility [
+
+	| tab target |
+	world addMorph: bar.
+	bar fullBounds.
+	tab := bar tabOf: secondUtility.
+	target := (bar tabOf: firstUtility) top @ (bar tabOf: firstUtility) top.
+	tab mouseDown: (self mouseEvent: #mouseDown at: tab center).
+	tab mouseMove: (self mouseMoveTo: target).
+	tab mouseUp: (self mouseEvent: #mouseUp at: target).
+	self assert: bar utilities asArray equals: {
+			secondUtility.
+			firstUtility }.
+	self deny: (bar isActive: secondUtility)
+]
+
+{ #category : 'tests - reordering' }
+UtilitiesBarMorphTest >> testDropIndexDependsOnTheOtherTabs [
+
+	| thirdUtility |
+	thirdUtility := UtilitiesBarTestUtility title: 'Third' priority: 30.
+	bar utilities: {
+			firstUtility.
+			secondUtility.
+			thirdUtility }.
+	world addMorph: bar.
+	bar fullBounds.
+	self assert: (bar tabIndexFor: thirdUtility droppedAt: (bar tabOf: firstUtility) top @ 0) equals: 1.
+	self assert: (bar tabIndexFor: firstUtility droppedAt: (bar tabOf: secondUtility) bottom @ (bar tabOf: secondUtility) bottom) equals: 2.
+	self assert: (bar tabIndexFor: firstUtility droppedAt: 0 @ bar bottom) equals: 3
+]
+
 { #category : 'tests - panels' }
 UtilitiesBarMorphTest >> testExpandActivatesFirstUtilityWhenNoneIsActive [
 
@@ -379,6 +455,61 @@ UtilitiesBarMorphTest >> testLayoutKeepsActiveUtilitiesOfACollapsedBar [
 	self assert: (newBar isActive: newSecondUtility)
 ]
 
+{ #category : 'tests - reordering' }
+UtilitiesBarMorphTest >> testMoveUtilityChangesTheOrderOfTheTabs [
+
+	| thirdUtility |
+	thirdUtility := UtilitiesBarTestUtility title: 'Third' priority: 30.
+	bar utilities: {
+			firstUtility.
+			secondUtility.
+			thirdUtility }.
+	bar moveUtility: thirdUtility toIndex: 1.
+	self assert: bar utilities asArray equals: {
+			thirdUtility.
+			firstUtility.
+			secondUtility }.
+	bar moveUtility: thirdUtility toIndex: 3.
+	self assert: bar utilities asArray equals: {
+			firstUtility.
+			secondUtility.
+			thirdUtility }
+]
+
+{ #category : 'tests - reordering' }
+UtilitiesBarMorphTest >> testOrderIsKeptWhenTheUtilitiesChange [
+
+	| newFirstUtility newSecondUtility |
+	bar moveUtility: secondUtility toIndex: 1.
+	newFirstUtility := UtilitiesBarTestUtility title: 'First' priority: 10.
+	newSecondUtility := UtilitiesBarTestUtility title: 'Second' priority: 20.
+	bar utilities: {
+			newFirstUtility.
+			newSecondUtility }.
+	self assert: bar utilities asArray equals: {
+			newSecondUtility.
+			newFirstUtility }
+]
+
+{ #category : 'tests - reordering' }
+UtilitiesBarMorphTest >> testOrderIsRestoredInANewBar [
+
+	| newBar newFirstUtility newSecondUtility |
+	bar moveUtility: secondUtility toIndex: 1.
+	newFirstUtility := UtilitiesBarTestUtility title: 'First' priority: 10.
+	newSecondUtility := UtilitiesBarTestUtility title: 'Second' priority: 20.
+	newBar := UtilitiesBarMorph new
+		          edge: #right;
+		          utilities: {
+				          newFirstUtility.
+				          newSecondUtility };
+		          restoreLayout: bar layoutSnapshot;
+		          yourself.
+	self assert: newBar utilities asArray equals: {
+			newSecondUtility.
+			newFirstUtility }
+]
+
 { #category : 'tests - panels' }
 UtilitiesBarMorphTest >> testPanelCanBeSmallerThanTheMinimumHeightOfItsContent [
 
@@ -421,6 +552,17 @@ UtilitiesBarMorphTest >> testPanelProportionsAreKeptWhenTheBarHeightChanges [
 	bar updateBounds.
 	bar fullBounds.
 	self assert: ((bar panelOf: firstUtility) height / (bar panelOf: secondUtility) height - ratio) abs < 0.05
+]
+
+{ #category : 'tests - reordering' }
+UtilitiesBarMorphTest >> testPanelsFollowTheOrderOfTheTabs [
+
+	bar activate: firstUtility.
+	bar activate: secondUtility.
+	bar moveUtility: secondUtility toIndex: 1.
+	self assert: bar activeUtilities asArray equals: {
+			secondUtility.
+			firstUtility }
 ]
 
 { #category : 'tests - visibility' }
@@ -602,6 +744,22 @@ UtilitiesBarMorphTest >> testToggleSettingsTwiceHidesThem [
 	bar toggleSettings.
 	self deny: bar isShowingSettings.
 	self assert: bar isExpanded
+]
+
+{ #category : 'tests - reordering' }
+UtilitiesBarMorphTest >> testUnplacedUtilitiesGoAtTheEnd [
+
+	| zeroUtility |
+	bar moveUtility: secondUtility toIndex: 1.
+	zeroUtility := UtilitiesBarTestUtility title: 'Zero' priority: 0.
+	bar utilities: {
+			firstUtility.
+			secondUtility.
+			zeroUtility }.
+	self assert: bar utilities asArray equals: {
+			secondUtility.
+			firstUtility.
+			zeroUtility }
 ]
 
 { #category : 'tests' }
