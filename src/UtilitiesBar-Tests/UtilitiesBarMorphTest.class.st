@@ -220,6 +220,43 @@ UtilitiesBarMorphTest >> testDeactivatingLastActiveUtilityCollapses [
 	self deny: bar isExpanded
 ]
 
+{ #category : 'tests - panels' }
+UtilitiesBarMorphTest >> testDefaultHeightIsReplacedByResizing [
+
+	firstUtility defaultHeight: 100.
+	world addMorph: bar.
+	bar activate: firstUtility.
+	bar activate: secondUtility.
+	bar fullBounds.
+	bar resizePanelsAbove: firstUtility below: secondUtility withSeparatorAt: bar top + 300.
+	bar fullBounds.
+	self assert: ((bar panelOf: firstUtility) height - 300) abs <= 1
+]
+
+{ #category : 'tests - panels' }
+UtilitiesBarMorphTest >> testDefaultHeightIsUsedUntilThePanelIsResized [
+
+	firstUtility defaultHeight: 100.
+	world addMorph: bar.
+	bar activate: firstUtility.
+	bar activate: secondUtility.
+	bar fullBounds.
+	self assert: (bar panelOf: firstUtility) height equals: 100.
+	self assert: (bar panelOf: secondUtility) bottom equals: bar bottom
+]
+
+{ #category : 'tests - panels' }
+UtilitiesBarMorphTest >> testDefaultHeightOfTheLastPanel [
+
+	secondUtility defaultHeight: 100.
+	world addMorph: bar.
+	bar activate: firstUtility.
+	bar activate: secondUtility.
+	bar fullBounds.
+	self assert: (bar panelOf: secondUtility) height equals: 100.
+	self assert: (bar panelOf: firstUtility) top equals: bar top
+]
+
 { #category : 'tests - visibility' }
 UtilitiesBarMorphTest >> testDeleteNotifiesThatTheDisplayedUtilitiesAreHidden [
 
@@ -272,6 +309,19 @@ UtilitiesBarMorphTest >> testIsCollapsedByDefault [
 	self deny: bar isExpanded.
 	self assertEmpty: bar activeUtilities.
 	self assert: bar width equals: bar tabStripWidth
+]
+
+{ #category : 'tests - panels' }
+UtilitiesBarMorphTest >> testLastPanelTakesTheRemainingHeightWhenAllHaveADefaultHeight [
+
+	firstUtility defaultHeight: 100.
+	secondUtility defaultHeight: 100.
+	world addMorph: bar.
+	bar activate: firstUtility.
+	bar activate: secondUtility.
+	bar fullBounds.
+	self assert: (bar panelOf: firstUtility) height equals: 100.
+	self assert: (bar panelOf: secondUtility) bottom equals: bar bottom
 ]
 
 { #category : 'tests - panels' }
@@ -567,4 +617,23 @@ UtilitiesBarMorphTest >> testUtilitiesAreSortedByPriorityThenTitle [
 			firstUtility.
 			thirdUtility.
 			secondUtility }
+]
+
+{ #category : 'tests - panels' }
+UtilitiesBarMorphTest >> testUtilityActivatedAfterAResizeGetsAnAverageShare [
+
+	| thirdUtility |
+	thirdUtility := UtilitiesBarTestUtility title: 'Third' priority: 30.
+	bar utilities: {
+			firstUtility.
+			secondUtility.
+			thirdUtility }.
+	world addMorph: bar.
+	bar activate: firstUtility.
+	bar activate: secondUtility.
+	bar fullBounds.
+	bar resizePanelsAbove: firstUtility below: secondUtility withSeparatorAt: bar top + 300.
+	bar activate: thirdUtility.
+	bar fullBounds.
+	self assert: ((bar panelOf: thirdUtility) height - (bar height / 3)) abs < 10
 ]

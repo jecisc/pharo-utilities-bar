@@ -11,7 +11,8 @@ Class {
 		'priority',
 		'buildCount',
 		'visibilityEvents',
-		'minimumContentHeight'
+		'minimumContentHeight',
+		'defaultHeight'
 	],
 	#category : 'UtilitiesBar-Tests',
 	#package : 'UtilitiesBar-Tests'
@@ -45,6 +46,18 @@ UtilitiesBarTestUtility >> buildContent [
 UtilitiesBarTestUtility >> buildCount [
 
 	^ buildCount
+]
+
+{ #category : 'accessing' }
+UtilitiesBarTestUtility >> defaultHeight [
+
+	^ defaultHeight
+]
+
+{ #category : 'accessing' }
+UtilitiesBarTestUtility >> defaultHeight: anInteger [
+
+	defaultHeight := anInteger
 ]
 
 { #category : 'events' }

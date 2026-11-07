@@ -6,6 +6,7 @@ To add a new utility, subclass me and implement:
 - #title: the label of the tab (defaults to the class name)
 - #newPresenter: answers the Spec presenter to display in the bar. Utilities based on Morphic can override #buildContent instead
 - #priority (optional): utilities are sorted by ascending priority, then by title
+- #defaultHeight (optional): the height in pixels of the panel until the user resizes it. Without it, the panel shares the height of the bar with the other ones
 - #displayed and #hidden (optional): the bar sends them when the panel of the utility becomes visible and when it stops being visible (deactivated, bar collapsed or deleted). Use them to only do costly work, such as following a source of updates, while the utility is visible
 
 The bar is rebuilt automatically when a utility class is added, removed or when one of its methods changes.
@@ -46,6 +47,13 @@ UtilitiesBarUtility >> buildContent [
 	"Answer the morph to display in the utilities bar when the utility is selected. It is built once and kept while the bar is alive."
 
 	^ self newPresenter build
+]
+
+{ #category : 'accessing' }
+UtilitiesBarUtility >> defaultHeight [
+	"Answer the height in pixels of the panel of the utility until the user resizes it, or nil to share the height of the bar with the other panels. Useful for small utilities."
+
+	^ nil
 ]
 
 { #category : 'events' }

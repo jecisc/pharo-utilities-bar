@@ -30,6 +30,12 @@ UtilitiesBarUtilityTest >> testDefaultTitleIsTheClassName [
 ]
 
 { #category : 'tests' }
+UtilitiesBarUtilityTest >> testHasNoDefaultHeight [
+
+	self assert: UtilitiesBarUtility new defaultHeight isNil
+]
+
+{ #category : 'tests' }
 UtilitiesBarUtilityTest >> testIsAbstract [
 
 	self assert: UtilitiesBarUtility isAbstract.

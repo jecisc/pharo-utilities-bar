@@ -4,7 +4,7 @@ I am a bar docked on the right or left edge of the world, displaying utilities (
 I am made of a strip of vertical tabs, one per utility, and of a stack of panels displaying the active utilities. The button at the top of the strip collapses the panels so that I only take the width of the strip, without changing which utilities are active.
 A tab tells whether its utility is active: an active tab is highlighted, even when I am collapsed. Clicking the tab of an inactive utility activates it and expands me. Clicking the tab of a displayed utility deactivates it; clicking the tab of an active utility while I am collapsed expands me. I collapse when the last active utility is deactivated.
 The panels are stacked in the order of the tabs. Each panel has a header with the title of its utility and a button to deactivate it. The utilities are told when their panel becomes visible or hidden, so that they can stop costly work while hidden.
-Dragging the separators between panels (see UtilitiesBarPanelSeparatorMorph) shares the height between them. The heights are kept as proportions so that they follow my height.
+A utility can declare a default height (see UtilitiesBarUtility >> #defaultHeight): its panel gets it until the user resizes the panels, and the other panels share the remaining height. Dragging the separators between panels (see UtilitiesBarPanelSeparatorMorph) turns the current heights into proportions and moves height between the two panels. The heights are kept as proportions so that they follow my height.
 Dragging the handle on the inner edge of the panels (see UtilitiesBarResizeHandleMorph) resizes them, and the new width is saved in the settings.
 
 The settings icon at the bottom of the strip toggles a panel with my settings below the other panels (see UtilitiesBarSettingsUtility).
@@ -316,6 +316,13 @@ UtilitiesBarMorph >> handlesMouseDown: anEvent [
 	"Handling the mouse down events, even to do nothing, prevents the hand from grabbing me when the mouse is pressed and moved over me."
 
 	^ true
+]
+
+{ #category : 'private - layout' }
+UtilitiesBarMorph >> hasFixedHeight: aUtility [
+	"A utility declaring a default height keeps it until the user resizes its panel."
+
+	^ aUtility defaultHeight isNotNil and: [ (proportions includesKey: aUtility) not ]
 ]
 
 { #category : 'initialization' }
@@ -632,9 +639,14 @@ UtilitiesBarMorph >> panelOf: aUtility [
 
 { #category : 'accessing' }
 UtilitiesBarMorph >> proportionOf: aUtility [
-	"Answer the share of the height of the bar given to the panel of aUtility, relatively to the other displayed panels."
+	"Answer the share of the height of the bar given to the panel of aUtility, relatively to the other displayed panels. A utility without proportion gets the average of the active ones, so that a panel opened after a resize gets a fair share."
 
-	^ proportions at: aUtility ifAbsent: [ 1 ]
+	| stored |
+	^ proportions at: aUtility ifAbsent: [
+			  stored := self activeUtilities
+				            select: [ :utility | proportions includesKey: utility ]
+				            thenCollect: [ :utility | proportions at: utility ].
+			  stored ifEmpty: [ 1 ] ifNotEmpty: [ stored average ] ]
 ]
 
 { #category : 'private - building' }
@@ -668,9 +680,10 @@ UtilitiesBarMorph >> resizeContentWithHandleAt: aNumber [
 
 { #category : 'resizing' }
 UtilitiesBarMorph >> resizePanelsAbove: anUpperUtility below: aLowerUtility withSeparatorAt: aNumber [
-	"The separator between the panels of the two utilities was dragged to the vertical position aNumber. Height is moved from one panel to the other, keeping the total proportion of both."
+	"The separator between the panels of the two utilities was dragged to the vertical position aNumber. The current heights become the proportions of the panels (replacing the default heights), then height is moved from one panel to the other."
 
 	| upperPanel combinedHeight upperHeight combinedProportion |
+	self useCurrentHeightsAsProportions.
 	upperPanel := panels at: anUpperUtility.
 	combinedHeight := upperPanel height + (panels at: aLowerUtility) height.
 	upperHeight := (aNumber - upperPanel top max: self minimumPanelHeight) min: combinedHeight - self minimumPanelHeight.
@@ -789,22 +802,36 @@ UtilitiesBarMorph >> updateBounds [
 
 { #category : 'private - layout' }
 UtilitiesBarMorph >> updatePanelHeights [
-	"Share the height of the panel stack between the displayed panels according to their proportions. The last panel takes what remains so that rounding errors do not leave a gap."
+	"The panels with a fixed height (see #hasFixedHeight:) get it, the others share the remaining height according to their proportions. The last panel without fixed height (or the last panel if they all have one) takes what remains so that rounding errors do not leave a gap."
 
-	| active separatorsHeight availableHeight totalProportion |
+	| active separatorsHeight fixed proportional remainingHeight totalProportion fillingUtility |
 	panelStack ifNil: [ ^ self ].
 	active := self activeUtilities.
 	separatorsHeight := panelStack submorphs inject: 0 into: [ :sum :morph |
 			                    (panels includes: morph)
 				                    ifTrue: [ sum ]
 				                    ifFalse: [ sum + morph height ] ].
-	availableHeight := self height - separatorsHeight.
-	totalProportion := active inject: 0 into: [ :sum :utility | sum + (self proportionOf: utility) ].
-	active allButLast do: [ :utility |
+	fixed := active select: [ :utility | self hasFixedHeight: utility ].
+	proportional := active reject: [ :utility | self hasFixedHeight: utility ].
+	remainingHeight := self height - separatorsHeight - (fixed inject: 0 into: [ :sum :utility | sum + utility defaultHeight ]).
+	totalProportion := proportional inject: 0 into: [ :sum :utility | sum + (self proportionOf: utility) ].
+	fixed do: [ :utility |
 			(panels at: utility)
 				vResizing: #rigid;
-				height: (availableHeight * (self proportionOf: utility) / totalProportion) rounded ].
-	(panels at: active last) vResizing: #spaceFill
+				height: utility defaultHeight ].
+	proportional do: [ :utility |
+			(panels at: utility)
+				vResizing: #rigid;
+				height: ((remainingHeight * (self proportionOf: utility) / totalProportion) rounded max: self minimumPanelHeight) ].
+	fillingUtility := proportional ifEmpty: [ active last ] ifNotEmpty: [ proportional last ].
+	(panels at: fillingUtility) vResizing: #spaceFill
+]
+
+{ #category : 'resizing' }
+UtilitiesBarMorph >> useCurrentHeightsAsProportions [
+	"The proportions are relative, so the current heights in pixels can replace them without moving anything. It also turns the default heights into proportions, as the user is resizing the panels."
+
+	self activeUtilities do: [ :utility | proportions at: utility put: (panels at: utility) height ]
 ]
 
 { #category : 'accessing' }
